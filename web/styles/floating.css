@@ -1,0 +1,958 @@
+﻿/* 悬浮窗：一个胶囊 + 可切换的展开面板（候选列表 / 词条正文 / 历史） */
+
+.stage {
+  position: absolute;
+  inset: 0;
+}
+
+/*
+ * 胶囊与面板绝对定位，位置（--pill-top / --panel-top / --panel-h）由主进程算好给下来。
+ * 窗口上下预留了面板空间，展开面板时窗口不动，否则 WebView2 没重画完的那一帧会把胶囊画错位置；
+ * 绝对定位下换展开方向只影响面板，胶囊在屏幕上永远不动。
+ */
+.content {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+}
+
+/*
+ * 吸入动画：胶囊宽 / 高过渡到 8px、投影留白收到 0，收窄的同时正好落到窄条位置（无缝衔接）。
+ */
+.content[data-edge-anim] {
+  padding: 0;
+}
+.content[data-edge-anim][data-edge='left'] .pill,
+.content[data-edge-anim][data-edge='right'] .pill {
+  width: 8px;
+}
+.content[data-edge-anim][data-edge='top'] .pill {
+  height: 8px;
+}
+.content[data-edge-anim] .panel {
+  display: none;
+}
+.content[data-no-transition],
+.content[data-no-transition] .pill {
+  transition: none !important;
+}
+/*
+ * 胶囊横向铺满窗口（与面板等宽），纵向钉在 --pill-top；data-align='right' 时改钉右侧，
+ * 吸入动画收窄时才是往右边缘缩而不是往左缩。
+ */
+.pill {
+  position: absolute;
+  left: 0;
+  right: auto;
+  top: var(--pill-top, 0px);
+}
+.content[data-align='right'] .pill {
+  left: auto;
+  right: 0;
+}
+
+/* ── 贴边窄条 ── */
+
+/*
+ * 被吸入屏幕边缘后只剩这一条；窗口此时就是窄条尺寸（没有投影留白），直接 inset:0 铺满。
+ */
+.strip {
+  position: absolute;
+  background: var(--shell-bg);
+  border: 1px solid var(--shell-border);
+}
+/*
+ * 窗口比可见窄条厚、多出来的部分推到屏幕外，窄条要贴在窗口朝屏幕内的那一侧：
+ * 贴左边画在窗口右侧、贴右边画在左侧、贴上边画在下侧。
+ */
+.strip[data-edge='left'] {
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+}
+.strip[data-edge='right'] {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  border-right: 0;
+  border-radius: 6px 0 0 6px;
+}
+.strip[data-edge='top'] {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 8px;
+  border-top: 0;
+  border-radius: 0 0 6px 6px;
+}
+/* 中间一道细指示条，让人看得出这里可以碰 */
+.strip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 2px;
+  background: var(--text-faint);
+  opacity: 0.6;
+}
+.strip[data-edge='left']::after,
+.strip[data-edge='right']::after {
+  width: 2px;
+  height: 18px;
+}
+.strip[data-edge='top']::after {
+  width: 18px;
+  height: 2px;
+}
+/* ── 胶囊 ── */
+
+.pill {
+  /*
+   * 尾部信息区（meta 文字 + 两个按钮）是浮在输入框上面的绝对定位层，不参与 flex 排版；
+   * 这两个变量同时被输入框的 padding-right 用着，保证两处用的是同一个宽度。
+   */
+  --pill-gap: 4px;
+  --pill-trailing-w: 148px;
+  /*
+   * 灰字（词典名）能占多宽：灰字与尾部按钮从不同时出现（hover / focus-within 时灰字淡出），所以它能往左借地方。
+   * ⚠️ 灰字是浮在输入框上面的绝对定位层，名字一长会钻进用户打的字底下 ——
+   * main.ts 的 syncMetaSpace() 按量到的灰字宽度同步设置 .pill-input 的 padding-right。
+   */
+  --pill-meta-w: 260px;
+  display: flex;
+  align-items: center;
+  gap: var(--pill-gap);
+  height: var(--pill-h, 52px);
+  width: var(--pill-w, 464px);
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--shell-bg);
+  border: 1px solid var(--shell-border);
+  box-shadow: var(--shell-shadow), inset 0 1px 0 var(--shell-highlight);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+    width var(--dur-absorb) var(--ease), height var(--dur-absorb) var(--ease);
+}
+.pill[data-focused='true'] {
+  border-color: var(--accent-ring);
+  box-shadow: var(--shell-shadow), 0 0 0 4px var(--accent-soft), inset 0 1px 0 var(--shell-highlight);
+}
+.pill[data-dragging='true'] {
+  cursor: grabbing;
+}
+.pill[data-dragging='true'] .pill-grip {
+  cursor: grabbing;
+}
+
+.pill-grip {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-faint);
+  cursor: grab;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.pill-grip:hover {
+  background: var(--hover);
+  color: var(--text-dim);
+}
+.pill-grip:active {
+  cursor: grabbing;
+}
+.pill-grip .app-mark {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+
+.pill-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  /*
+   * 右内边距留出尾部浮层宽度 + 间距 + 2px：输入框的框一直铺到胶囊右边（移上去是输入光标、右键是文本菜单），
+   * 但文字区不会钻到 meta 文字和两个按钮底下。
+   */
+  padding: 0 calc(var(--pill-trailing-w) + var(--pill-gap) + 2px) 0 2px;
+  font-size: 15px;
+  letter-spacing: 0.1px;
+  color: var(--text);
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+.pill-input::placeholder {
+  color: var(--text-faint);
+}
+
+/*
+ * 尾部信息区：meta 状态文字 + 两个按钮。
+ * 它是绝对定位浮层而不是 flex 子项 —— 整块 pointer-events:none（不吃事件），
+ * 只有两个按钮自己吃（见 .pill-actions），于是按钮左边那片空白命中的是下面的输入框。
+ */
+.pill-trailing {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--pill-trailing-w);
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.pill-meta {
+  /*
+   * ⚠️ `flex: 0 0 auto` 才是让灰字显示全的那一步：它是 .pill-trailing（148px 宽）里的 flex 子项，
+   * flex-shrink 默认 1 —— 内容比容器宽时会先被压回 148px，而 max-width 只是上限。
+   * 不收缩（flex-shrink: 0）+ justify-content: flex-end，它才会往左溢出容器、借到 --pill-meta-w。
+   */
+  flex: 0 0 auto;
+  max-width: var(--pill-meta-w);
+  padding-right: 6px;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--text-faint);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity var(--dur) var(--ease);
+  /* 状态文字是「看」的，不是「点」的：别挡着下面输入框的光标和右键菜单 */
+  pointer-events: none;
+}
+.pill-meta[data-state='error'] {
+  color: var(--danger);
+}
+
+.pill-actions {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  opacity: 0;
+  transform: translateX(8px);
+  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+/*
+ * 事件只认两个按钮本身：容器是 inset:0 的 148px 透明框，吃事件就会把按钮左边的空白也变成按钮区；
+ * 按钮隐藏（opacity:0）时同样不吃事件，否则会点到看不见的按钮。
+ */
+.pill-actions,
+.pill-actions .icon-btn {
+  pointer-events: none;
+}
+.pill:hover .pill-actions,
+.pill:focus-within .pill-actions {
+  opacity: 1;
+  transform: none;
+}
+.pill:hover .pill-actions .icon-btn,
+.pill:focus-within .pill-actions .icon-btn {
+  pointer-events: auto;
+}
+.pill:hover .pill-meta,
+.pill:focus-within .pill-meta {
+  opacity: 0;
+}
+
+.pill-spinner {
+  position: absolute;
+  right: 12px;
+  width: 14px;
+  height: 14px;
+  /* 纯装饰的转圈：不吃鼠标事件，右键/悬浮都透到下面的输入框 */
+  pointer-events: none;
+  border-radius: 50%;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── 展开面板 ── */
+
+/*
+ * 面板绝对定位：上下位置由 --panel-top 决定、高度由 --panel-h 决定
+ * （渲染进程按内容算出来并收敛到窗口预留的空间内），于是面板出现 / 消失不牵动胶囊，也不牵动窗口。
+ */
+.panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--panel-top, 0px);
+  height: var(--panel-h, 0px);
+  min-height: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-card);
+  background: var(--shell-bg);
+  border: 1px solid var(--shell-border);
+  box-shadow: var(--shell-shadow), inset 0 1px 0 var(--shell-highlight);
+  overflow: hidden;
+  animation: panel-in var(--dur) var(--ease);
+}
+.panel[hidden] {
+  display: none;
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * 标题栏宽度分配：**标题区可以被压没，按钮区一个像素都不让** —— 图标按钮 flex:0 0 auto 永远 32px，
+ * 词典名用满标题栏剩下的宽度（flex-shrink 给得极大，真到极限它先缩），完整名字挂在 title 上。
+ * 标题栏现在只留词典名（词条名已 hidden），所以宽度分配只剩「词典名 vs 按钮」两家。
+ */
+.panel-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid var(--divider);
+}
+.panel-head[hidden] {
+  display: none;
+}
+/*
+ * `#entryWord`：**已经不显示了**（HTML 上带着 `hidden`）；保留它是因为它是「当前词条」的检查标准 ——
+ * 脚本读的是它的 `textContent`（`hidden` 不影响），删掉等于把这些断言的地基一起抽走。
+ * ⚠️ 这里**不许写 `display`**：UA 的 `[hidden] { display: none }` 就是靠没人覆盖 display 生效的。
+ */
+.entry-word {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 650;
+  letter-spacing: 0.1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.entry-dict {
+  /*
+   * 不再有 max-width：它用满标题栏剩下的宽度，超过才走省略号（min-width:0 + flex-shrink 保证它先缩，
+   * **按钮一个像素都不让**）；完整名字始终挂在 title 上。
+   */
+  flex: 0 999 auto;
+  min-width: 0;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.panel-head-spacer {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * 标题栏这排按钮的**按下反馈保留**（.icon-btn 的圆底 + 图标微缩），左右键按下都该有。
+ * 只掐掉鼠标点出来的焦点圈：浏览器默认的 outline 会沿 50% 圆角画成一个黑圈。
+ * `:focus:not(:focus-visible)` 是标准做法 —— 鼠标点出来的焦点不画圈，键盘 Tab 过来的仍然画。
+ */
+.panel-head .icon-btn:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.panel-body[data-mode='list'] {
+  padding: 6px;
+}
+.panel-body[data-mode='content'] {
+  /*
+   * 右侧只留 4px（左 / 上 / 下照旧 8px）：正文框右边那条空带子是三层叠出来的 ——
+   * 这里的 8px + 词条正文自己的滚动条 + 文档 body 的右侧内边距。
+   * 不改成 0 是因为正文块自己有圆角（--radius-md），贴死会跟面板的圆角打架。
+   */
+  padding: 8px 4px 8px 8px;
+}
+
+/* ── 候选列表 ── */
+
+.suggest {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  cursor: default;
+}
+.suggest-item[data-active='true'] {
+  background: var(--accent-soft);
+}
+.suggest-word {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.suggest-item[data-active='true'] .suggest-word {
+  color: var(--accent);
+  font-weight: 600;
+}
+.suggest-kind {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--text-faint);
+  background: var(--hover);
+}
+.suggest-item[data-kind='exact'] .suggest-kind {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.suggest-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 28px;
+  padding: 0 10px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.suggest-foot kbd {
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  border: 1px solid var(--shell-border);
+  background: var(--shell-bg-sub);
+}
+.suggest-foot .spacer {
+  flex: 1 1 auto;
+}
+
+.empty-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 100%;
+  min-height: 120px;
+  padding: 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+.empty-hint strong {
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+/* ── 词条正文 ── */
+
+.reader {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  /* 刻意不画边框：这一圈细线看着像「面板里再套一个框」，而阅读区本来就是白纸、和面板底色一致 */
+  border: 0;
+  overflow: hidden;
+  /* 解释行 + 正文两行：解释行由它自己撑高，正文吃掉剩下的（见下面的 flex） */
+  display: flex;
+  flex-direction: column;
+}
+/*
+ * 「这一页是怎么来的」—— 兜底通道的解释行（借查 / 自动翻译 / 终态页的说明）。
+ * 自动兜底之后，「当前词典里没有」不再由一张单独的页面表达（那一页变成终态页），
+ * 所以必须有一行字说清这一页的来历，否则用户会把借查来的词条、甚至机器译文当成当前词典里真有这条。
+ */
+.reader-via {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: var(--shell-bg-sub);
+  border-bottom: 1px solid var(--shell-border);
+}
+.reader-via[data-via='translate'] {
+  /* 译文那一行要**看得见是和词典不同的东西**：换一个偏提醒的底色，但不抢正文 */
+  color: var(--text);
+  background: var(--accent-soft, var(--shell-bg-sub));
+}
+.reader-via[hidden] {
+  display: none;
+}
+.reader iframe {
+  display: block;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  border: 0;
+  background: var(--paper);
+}
+.reader-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--paper);
+  color: #8b93a7;
+  font-size: 13px;
+}
+
+/*
+ * 正文里的反馈条（`.reader` 的子元素）：视觉沿用窗口那条 `.toast`，但定位刻意不同 ——
+ * absolute + left:50% + bottom:12px 贴在**内容框**底部中央，max-width 也按内容框算；
+ * 父元素 `.reader` 是 overflow: hidden，「显示范围在内容框内部」是结构保证的；pointer-events: none 不能少。
+ */
+.reader-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  z-index: 5;
+  transform: translate(-50%, 8px);
+  padding: 7px 14px;
+  border-radius: 12px;
+  max-width: calc(100% - 24px);
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--shell-bg-sub);
+  border: 1px solid var(--shell-border);
+  box-shadow: var(--shell-shadow);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.reader-toast[data-show='true'] {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.reader-toast[data-tone='error'] {
+  color: var(--danger);
+}
+/*
+ * 提示条上的**可点出路**（候选 / 再问一遍）：容器 `.reader-toast` 是 pointer-events: none
+ * （不许改 —— 它盖在词条上，要放行正文里的选区和点击），所以按钮自己必须把 pointer-events 打开，
+ * 并且**不继承** error 那个红色（提示本身是红的，按钮得看得出能点）。
+ */
+.reader-toast-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 7px;
+}
+.reader-toast-action {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--shell-border);
+  background: var(--shell-bg);
+  color: var(--accent);
+  cursor: pointer;
+  pointer-events: auto;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reader-toast-action:hover {
+  background: var(--shell-bg-sub);
+}
+
+/* ── 历史 ── */
+
+.history-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  cursor: default;
+}
+.history-item[data-active='true'] {
+  background: var(--accent-soft);
+}
+.history-word {
+  flex: 0 1 auto;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-dict {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-time {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.history-more {
+  padding: 10px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 60;
+  /*
+   * 宽度跟着内容走：下限 118px 是照文本菜单定的（带 Ctrl+X 之类快捷键，自然宽度约 122px），
+   * 只有两项、又没有快捷键的小图标菜单就不会在右侧空出一大片。
+   */
+  min-width: 118px;
+  max-width: 280px;
+  width: max-content;
+  /*
+   * 纵排 + stretch：菜单项是 <button>，Chromium 对按钮一律按内容宽度排版（display:flex 也不吃
+   * 块级元素的自动撑满），项宽就各自跟着文字走、悬浮高亮框长短不一；纵排 flex 的交叉轴 stretch 才
+   * 把每一项都撑到菜单内宽。
+   */
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 6px;
+  border-radius: var(--radius-md);
+  background: var(--shell-bg-sub);
+  border: 1px solid var(--shell-border);
+  box-shadow: var(--shell-shadow);
+  animation: menu-in var(--dur-menu) var(--ease);
+}
+.context-menu[hidden] {
+  display: none;
+}
+/*
+ * 弹出动画只用「淡入 + 轻微下滑」，**不用 scale**：主进程要按 getBoundingClientRect()
+ * 把菜单量出来做窗口 Region，而 scale 会把这个矩形一起缩小 —— 动画期间量到的菜单比实际小一圈、
+ * 边缘被裁掉几个像素。位移只影响位置、不影响尺寸。
+ */
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.menu-item:hover {
+  background: var(--hover);
+}
+.menu-item[data-disabled='true'] {
+  color: var(--text-faint);
+  opacity: 0.45;
+  cursor: default;
+}
+.menu-item[data-disabled='true']:hover {
+  background: none;
+}
+.menu-item .shortcut {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+/*
+ * 菜单项的旁注（「这一项具体是什么」）：音色名、在线服务名、不可用的原因。
+ * 和快捷键共用同一块位置，但能占得宽一点；标签那一头留了收缩余地（.menu-label）。
+ */
+.menu-item .menu-detail {
+  margin-left: auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 150px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.menu-item .menu-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.menu-sep {
+  height: 1px;
+  margin: 5px 8px;
+  background: var(--divider);
+}
+
+/*
+ * 发音按钮正在出声时：图标呼吸 + 变成强调色。
+ * 只改颜色和透明度、不改尺寸 —— 这一排按钮固定 32px，一胀一缩会把旁边的按钮挤动。
+ */
+.icon-btn[data-playing='true'] {
+  color: var(--accent);
+}
+.icon-btn[data-playing='true'] .icon {
+  animation: speak-pulse 1s ease-in-out infinite;
+}
+@keyframes speak-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+/*
+ * 正在准备音频（离线合成 / 在线取回）时给一点「在忙」的暗示。
+ * 用透明度而不是旋转：这一排图标没有一个是圆的，转起来反而像坏了。
+ */
+.icon-btn[data-busy='true'] .icon {
+  animation: speak-pulse 0.7s linear infinite;
+}
+
+/* 选中文字时在选区旁边浮现的复制/剪切按钮 */
+.sel-toolbar {
+  position: fixed;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--shell-bg-sub);
+  border: 1px solid var(--shell-border);
+  box-shadow: var(--shell-shadow);
+  animation: menu-in var(--dur-menu) var(--ease);
+}
+.sel-toolbar[hidden] {
+  display: none;
+}
+
+/* ── 关闭询问对话框 ── */
+
+.backdrop {
+  /*
+   * 铺满整个窗口是不行的：窗口上下都预留了面板的空间，铺满会把对话框放在离胶囊大老远的窗口正中间。
+   * 改成占住「面板本来会出现的那一块」，于是对话框永远紧挨着胶囊（向上展开时在上方，向下展开时在下方）。
+   */
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--panel-top, 0px);
+  height: var(--panel-h, 0px);
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  /*
+   * 遮罩不画：窗口没有逐像素透明，遮罩只能盖住 WebView2 自己的底色、盖不到桌面，
+   * 反而会在胶囊和对话框之间糊出一块灰；窗口 Region 只保留「胶囊 + 对话框」两块。
+   */
+  background: transparent;
+  animation: fade-in var(--dur) var(--ease);
+}
+.backdrop[hidden] {
+  display: none;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.dialog {
+  width: min(360px, 100%);
+  /*
+   * 高度由渲染进程按对话框的自然高度去要（见 measureDialogHeight），这里是兜底：
+   * 屏幕太矮、窗口被主进程夹住时让内容内部滚动，而不是被裁掉（保证两个选项永远点得到）。
+   * 上限不留余量（遮罩本来就有 10px 内边距），否则会比自然高度矮一点、自己压出一条右侧滚动条。
+   */
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 18px;
+  border-radius: var(--radius-card);
+  background: var(--shell-bg);
+  border: 1px solid var(--shell-border);
+  box-shadow: var(--shell-shadow);
+  animation: dialog-in var(--dur) var(--ease);
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.dialog h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 650;
+}
+.dialog p {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+.dialog-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.dialog-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--shell-border);
+  background: var(--shell-bg-sub);
+  font-size: 13px;
+  text-align: left;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.dialog-choice:hover {
+  border-color: var(--accent-ring);
+  background: var(--accent-soft);
+}
+.dialog-choice .choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dialog-choice .choice-sub {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.dialog-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.checkbox input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.dialog-foot .spacer {
+  flex: 1 1 auto;
+}
+
+
+/*
+ * 悬浮窗的提示条：**一律停在离输入框最远的那一头，绝不压住输入框**（输入框永远显示在最前面）。
+ * 位置由 `main.ts` 的 `applyPanelGeometry()` 按下面的规矩算好、写进 --toast-bottom：
+ * data-dock='panel' 贴面板底部居中、'bottom' 贴窗口底部、'top' 贴窗口顶部；max-* 与 overflow 是越界兜底。
+ */
+.toast {
+  top: auto;
+  bottom: var(--toast-bottom, 18px);
+  max-width: calc(100% - 24px);
+  max-height: max(84px, calc(var(--panel-h, 240px) - 16px));
+  overflow: hidden;
+  border-radius: 12px;
+  transform: translate(-50%, 8px);
+}
+/* 展开方向 = 向上：胶囊在窗口下部，提示就贴窗口顶部 */
+.toast[data-dock='top'] {
+  top: 8px;
+  bottom: auto;
+  transform: translate(-50%, -8px);
+}
+.toast[data-show='true'] {
+  transform: translate(-50%, 0);
+}

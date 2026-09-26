@@ -1,0 +1,112 @@
+/* ==========================================================================
+   两个窗口共用的小组件
+   ========================================================================== */
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-dim);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+.icon-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.icon-btn:active {
+  background: var(--active);
+  transform: scale(0.94);
+}
+.icon-btn[data-tone='danger']:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.icon-btn[data-size='sm'] {
+  width: 28px;
+  height: 28px;
+}
+.icon-btn[disabled] {
+  color: var(--text-faint);
+  opacity: 0.4;
+  cursor: default;
+}
+.icon-btn[disabled]:hover {
+  background: none;
+  color: var(--text-faint);
+}
+
+/* 次要按钮：靠底色分档，静止态自带浅底（光看悬浮态认不出是按钮），悬浮再明显深一级。
+   不许加描边、也不许改回真 `border` —— 真边框会让按钮宽 2px，四个「试听」的宽度就不一样了。 */
+.ghost-btn {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  background: var(--hover);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.ghost-btn:hover {
+  /* 比静止态再深一级：悬浮的变化只许更强，不许被静止态吃掉 */
+  background: var(--active);
+  color: var(--text);
+}
+.ghost-btn:active {
+  filter: brightness(0.96);
+}
+.ghost-btn.danger {
+  color: var(--danger);
+}
+.ghost-btn.danger:hover {
+  background: var(--danger-soft);
+}
+
+.link-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease);
+}
+.link-chip:hover {
+  background: var(--accent-ring);
+  color: var(--text-invert);
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 80;
+  transform: translate(-50%, 8px);
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  /* 两个窗口都只有 464 DIP 宽，提示条得自己收着点，不能横向撑出窗口 */
+  max-width: calc(100% - 24px);
+  text-align: center;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--shell-bg-sub);
+  border: 1px solid var(--shell-border);
+  box-shadow: var(--shell-shadow);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.toast[data-show='true'] {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.toast[data-tone='error'] {
+  color: var(--danger);
+}

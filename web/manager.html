@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; form-action 'none'"
+    />
+    <title>选项</title>
+    <link rel="stylesheet" href="./styles/tokens.css" />
+    <link rel="stylesheet" href="./styles/components.css" />
+    <link rel="stylesheet" href="./styles/manager.css" />
+  </head>
+  <body>
+    <!--
+      选项窗口：四个页签，每页一类设置。本文件只有结构性标记 —— 行的生成与状态在
+      `src/manager/main.ts`，视觉在 `styles/manager.css`。
+      注释只写"这里为什么必须长这样"（改动会出问题的约束），设计经过见项目文档。
+    -->
+    <div class="shell">
+      <header class="titlebar" id="titlebar">
+        <div class="titlebar-mark" id="titlebarMark"></div>
+        <div class="titlebar-text">
+          <h1>选项</h1>
+        </div>
+        <span class="titlebar-spacer"></span>
+        <button class="icon-btn" id="btnMinimize" type="button" title="最小化"></button>
+        <button class="icon-btn" id="btnClose" type="button" data-tone="danger" title="关闭窗口"></button>
+      </header>
+
+      <!--
+        页签顺序是**四处一致的同一份约定**：这里、`shared/types.ts` 的 `OptionsTab`、
+        `main.ts` 的 `TAB_NAMES`、的 `EXPECTED_TABS` —— 改顺序四处一起改。
+        ⚠️ 下面四个 `<section>` 的先后**故意**与页签顺序不一致：同时只有一个 pane 显示，
+        DOM 先后不影响显示与键盘 Tab 顺序（隐藏的那些是 `display:none`，焦点进不去）。
+      -->
+      <nav class="tabs" id="tabs" role="tablist">
+        <button class="tab" id="tabDicts" type="button" data-tab="dicts" role="tab">词库</button>
+        <button class="tab" id="tabSpeech" type="button" data-tab="speech" role="tab">语音</button>
+        <button class="tab" id="tabTranslate" type="button" data-tab="translate" role="tab">翻译</button>
+        <button class="tab" id="tabGeneral" type="button" data-tab="general" role="tab">常规</button>
+      </nav>
+
+      <main class="body">
+        <!-- 常规页：程序自身的三件事（启动 / 悬浮窗 / 数据）。一组一个 `.speech-group`，组间那条虚线来自它的样式 -->
+        <section class="pane" id="paneGeneral" data-pane="general" hidden>
+          <div class="speech-body" id="generalBody">
+            <div class="speech-group">
+              <div class="speech-group-title">启动</div>
+              <!-- 与托盘菜单那一项**是同一个设置**：这边改完，壳推 `traymenu:login-changed`，那边勾选跟着变 -->
+              <label class="switch-row">
+                <input type="checkbox" id="loginAtStartup" />
+                <span>开机自动启动</span>
+              </label>
+            </div>
+
+            <div class="speech-group">
+              <div class="speech-group-title">悬浮窗</div>
+              <!-- ⚠️ 这一项**下一次启动**才生效 —— 所以下面那行小字必须留着，否则用户会以为"我关掉了怎么还在" -->
+              <label class="switch-row">
+                <input type="checkbox" id="showOnStartup" />
+                <span>启动时显示悬浮窗</span>
+              </label>
+              <p class="speech-note" id="showOnStartupNote">改了要下次启动才生效。</p>
+              <div class="field">
+                <label class="field-label" for="closeBehavior">关闭悬浮窗时</label>
+                <select id="closeBehavior" class="select">
+                  <option value="ask">每次询问我</option>
+                  <option value="tray">直接最小化到托盘</option>
+                  <option value="quit">直接退出程序</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="speech-group">
+              <div class="speech-group-title">数据</div>
+              <!-- 打开配置目录：路径问壳要（`shell:configDir`），再交给 `openInExplorer`（`shell:openPath`） -->
+              <div class="field">
+                <button class="ghost-btn" id="openConfigDir" type="button">打开配置目录</button>
+              </div>
+              <p class="speech-note" id="configDirNote"></p>
+              <!-- ⚠️ 清空历史**不可撤销**，所以三个按钮都得留着：点一下换成「确认清空 / 取消」，少一个就退化成"一点就清" -->
+              <div class="field">
+                <button class="ghost-btn" id="clearHistory" type="button">清空查词历史</button>
+                <button class="ghost-btn danger" id="clearHistoryConfirm" type="button" hidden>确认清空</button>
+                <button class="ghost-btn" id="clearHistoryCancel" type="button" hidden>取消</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 词库页：一行一条（行的结构由 `main.ts` 的 `render()` 生成，样式见 `manager.css` 的 `.dict-item`）。
+             ⚠️ 工具栏上只有「添加词典文件」：支持哪些文件那句话只写在空态里，有词典时再说一遍是噪声。 -->
+        <section class="pane" id="paneDicts" data-pane="dicts">
+          <div class="toolbar">
+            <button class="primary-btn" id="btnAddLarge" type="button"></button>
+          </div>
+
+          <ul class="dict-list" id="dictList"></ul>
+
+          <div class="empty-state" id="emptyState" hidden>
+            <div class="empty-icon" id="emptyIcon"></div>
+            <h2>词库还是空的</h2>
+            <p>点击"添加词典文件"选择硬盘上的 .mdx 文件。<br />如果有配套的 .mdd 资源库，会自动一起加入。</p>
+          </div>
+        </section>
+
+        <!-- 语音页：三段音源（内置录音 / 豆包在线 / 系统离线）。行几何见 `manager.css` 的 `.speech-body` -->
+        <section class="pane" id="paneSpeech" data-pane="speech" hidden>
+          <div class="speech-body" id="speechBody">
+            <!-- ⚠️ 这句话的字面顺序必须与下面三组的排列一致（不一致会被读成"顺序反了"）；顺序是产品定死的，不做成可选项 -->
+            <p class="speech-note speech-priority" id="speechPriority">语音音源优先级：词典内置录音 → 豆包语音（在线） → 系统语音（离线）</p>
+            <!-- ⚠️ **元素不能删**：那是"点什么都不出声"时用户唯一能看到的解释（置灰 / 失败必须说明原因）。
+                 默认 `hidden`，没话说时一个字都不占。 -->
+            <p class="speech-note speech-issue" id="speechSummary" hidden></p>
+
+            <div class="speech-group">
+              <div class="speech-group-title">内置录音</div>
+              <!-- ⚠️ 这条滑块**只由手拖**：「平衡音量」一个字都不写 —— 这条播放路拿不到峰值、做不了自动保护，
+                   而这本的录音峰值本就接近满刻度。行尾「试听」按这一行当前的值放这本词典的原录音。 -->
+              <div class="field">
+                <label class="field-label" for="dictGain" id="dictGainLabel">音量</label>
+                <!-- 悬浮提示写的是"往上提的代价"：提多了到输出端会硬削波（听感是破音），往下调没有这个代价 -->
+                <input
+                  class="range"
+                  id="dictGain"
+                  type="range"
+                  min="-24"
+                  max="12"
+                  step="0.5"
+                  value="0"
+                  title="调轻不影响音质；往上提可能削顶失真（有的录音本身已接近满刻度）"
+                />
+                <span class="field-value" id="dictGainValue">0</span>
+                <button class="ghost-btn field-action" id="dictGainPreview" type="button">试听</button>
+                <span class="field-status field-status-wide" id="dictGainNote" hidden></span>
+              </div>
+              <p class="speech-note">单位：dB</p>
+            </div>
+
+            <div class="speech-group">
+              <div class="speech-group-title">豆包语音（在线）</div>
+
+              <!-- ⚠️ **全程序唯一主动联网的地方**，这段必须留着：说清"要念的词会发给第三方"。⚠️ 与 <b> 都不许删、不许改成普通灰字 -->
+              <p class="speech-note">
+                ⚠️ 在线语音由第三方服务提供（火山引擎·豆包语音合成）；<b>发音时要念的词会发给该服务</b>；
+                没填 API Key 时，程序不会为发音发出任何网络请求。
+              </p>
+
+              <!-- Key 平时是空的（掩码挂在 placeholder 上）。输入框**撑满整行**，状态字是绝对定位画在框里的，
+                   所以框上必须留 `padding-right` —— 不留的话圆点跑到字底下、也挡住密码框自带的"显示密码"眼睛。 -->
+              <div class="field">
+                <label class="field-label" for="doubaoApiKey">API Key</label>
+                <span class="field-input-inside">
+                  <input
+                    class="text-input"
+                    id="doubaoApiKey"
+                    type="password"
+                    spellcheck="false"
+                    autocomplete="off"
+                    placeholder="还没填"
+                  />
+                  <span class="field-status field-status-inside" id="doubaoStatus"></span>
+                </span>
+              </div>
+              <p class="speech-note">
+                申请：打开 <code>https://console.volcengine.com/speech/new/setting/apikeys</code>
+                按引导开通服务、创建 API Key；首次进控制台要实名认证。
+              </p>
+
+              <!-- 后端定死的只读值，同样撑满整行 -->
+              <div class="field">
+                <label class="field-label" for="doubaoResourceId">TTS 模型</label>
+                <input class="text-input" id="doubaoResourceId" type="text" value="seed-tts-2.0" readonly />
+              </div>
+
+              <!-- 音色只显示 ID（官网名要静态快照才敢确定，快照会过期）。留空 = 内置默认音色。
+                   ⚠️ 每格的「试听」在下一条滑块那一行 —— 站在输入框行尾会占掉固定宽度，输入框就撑不满。 -->
+              <div class="field">
+                <label class="field-label" for="doubaoSpeakerEn">英文音色</label>
+                <input
+                  class="text-input"
+                  id="doubaoSpeakerEn"
+                  type="text"
+                  spellcheck="false"
+                  placeholder="留空 = 用内置默认音色"
+                  title="留空 = 用内置默认音色（en_female_dacey_uranus_bigtts）"
+                />
+              </div>
+              <!-- 音量那一行：滑块 | 数字（右对齐，五个滑块共列） | 「试听」（听的就是上面那一格的音色） -->
+              <div class="field">
+                <label class="field-label" for="doubaoLoudnessEn">英文音量</label>
+                <input class="range" id="doubaoLoudnessEn" type="range" min="-50" max="100" step="1" value="0" />
+                <span class="field-value" id="doubaoLoudnessEnValue">0</span>
+                <button class="ghost-btn field-action" id="voicePreviewEn" type="button">试听</button>
+              </div>
+
+              <div class="field">
+                <label class="field-label" for="doubaoSpeakerZh">中文音色</label>
+                <input
+                  class="text-input"
+                  id="doubaoSpeakerZh"
+                  type="text"
+                  spellcheck="false"
+                  placeholder="留空 = 用内置默认音色"
+                  title="留空 = 用内置默认音色（zh_female_vv_uranus_bigtts）"
+                />
+              </div>
+              <div class="field">
+                <label class="field-label" for="doubaoLoudnessZh">中文音量</label>
+                <input class="range" id="doubaoLoudnessZh" type="range" min="-50" max="100" step="1" value="0" />
+                <span class="field-value" id="doubaoLoudnessZhValue">0</span>
+                <button class="ghost-btn field-action" id="voicePreviewZh" type="button">试听</button>
+              </div>
+              <p class="speech-note">单位：豆包官方补偿值</p>
+
+              <div class="speech-actions">
+                <button class="ghost-btn" id="doubaoApply" type="button">保存</button>
+                <button class="ghost-btn" id="doubaoBalance" type="button">平衡音量</button>
+                <button class="ghost-btn" id="speechClearCache" type="button">清空发音缓存</button>
+                <!-- ⚠️ 纵向状态列：两行各占一行、**空的那行整行隐藏** —— 所以没有保存结果时「已平衡」自然落到
+                     第一行，不靠两个绝对位置去凑。两格都是一行封顶（完整原文挂在 title 上）。 -->
+                <div class="speech-status-stack">
+                  <span class="field-status" id="doubaoApplyResult" hidden></span>
+                  <span class="field-status" id="doubaoBalanceResult" hidden></span>
+                </div>
+              </div>
+              <p class="speech-note" id="speechCacheNote"></p>
+            </div>
+
+            <div class="speech-group">
+              <div class="speech-group-title">系统语音（离线）</div>
+              <div class="field">
+                <label class="field-label" for="speechVoice">音色</label>
+                <select class="select" id="speechVoice"></select>
+              </div>
+              <!-- ⚠️ 行尾「重置」必须与四个「试听」**同宽同位**（两个汉字 = 45px），否则五个滑块会不齐 -->
+              <div class="field">
+                <label class="field-label" for="speechRate">语速</label>
+                <input class="range" id="speechRate" type="range" min="-10" max="10" step="1" value="0" />
+                <span class="field-value" id="speechRateValue">0</span>
+                <button class="ghost-btn field-action" id="speechRateReset" type="button">重置</button>
+              </div>
+              <div class="field">
+                <label class="field-label" for="speechAccent">口音偏好</label>
+                <select class="select" id="speechAccent">
+                  <option value="auto">自动</option>
+                  <option value="uk">英音优先</option>
+                  <option value="us">美音优先</option>
+                </select>
+              </div>
+              <!-- 与内置录音那条**相反**：这一条会被「平衡音量」按实测电平自动写 -->
+              <div class="field">
+                <label class="field-label" for="systemGain">音量</label>
+                <input class="range" id="systemGain" type="range" min="-24" max="12" step="0.5" value="0" />
+                <span class="field-value" id="systemGainValue">0</span>
+                <button class="ghost-btn field-action" id="systemGainPreview" type="button">试听</button>
+                <span class="field-status field-status-wide" id="systemGainNote" hidden></span>
+              </div>
+              <p class="speech-note">单位：dB</p>
+              <!-- 只在**有话说**的时候出现（目前只有"系统语音不可用"那一种） -->
+              <p class="speech-note" id="speechEngineNote" hidden></p>
+            </div>
+
+          </div>
+        </section>
+
+        <!--
+          翻译页：**凭据不单独成页** —— Key 在「语音」页填，这一页只在缺 Key 时说清缺什么并给个可点的跳转。
+          ⚠️ 两种"不能用"必须分得开（混成一种灰，用户会以为是自己关的、反复点那个开关）：
+          「缺 Key」= 客观不可用（开关与下拉置灰、原因写 title 上）；「用户自己关掉的」= 开关永远可点。
+        -->
+        <section class="pane" id="paneTranslate" data-pane="translate" hidden>
+          <div class="speech-body" id="translateBody">
+            <!-- 缺 Key 时的横幅 + 一个**任何时候都不置灰**的跳转按钮 -->
+            <p class="speech-note translate-missing" id="translateMissing" hidden></p>
+            <button class="ghost-btn translate-jump" id="translateJumpToSpeech" type="button" hidden>
+              去「语音」页填写 →
+            </button>
+
+            <div class="speech-group">
+              <div class="speech-group-title">机器翻译</div>
+              <label class="switch-row">
+                <input type="checkbox" id="translateEnabled" />
+                <span>启用机器翻译</span>
+              </label>
+              <!-- ⚠️ 隐私提示是**静态**的：关着的时候也得看得见，否则用户是在不知情下打开的 -->
+              <p class="speech-note">
+                开启后，要翻译的文字会发给火山引擎（豆包）。词典里没有的词会自动翻译（可在下面关掉）。
+              </p>
+
+              <div class="field">
+                <label class="field-label" for="translateTarget">目标语种</label>
+                <select class="select" id="translateTarget">
+                  <option value="auto">自动（中文译英，其余译中）</option>
+                  <option value="zh">固定译成中文</option>
+                  <option value="en">固定译成英文</option>
+                </select>
+              </div>
+
+              <label class="switch-row">
+                <input type="checkbox" id="translateAuto" />
+                <span>查不到时自动翻译</span>
+              </label>
+              <!-- 这一句同样**必须静态**：它解释的是"关掉之后会怎样"，而用户最需要它的时候正是关掉之后 -->
+              <p class="speech-note">
+                词典里都没有的词，直接给出译文；关掉后只提示「查不到」，由你点翻译。
+              </p>
+            </div>
+
+            <div class="speech-group">
+              <div class="speech-group-title">检测凭据</div>
+              <!-- **一个按钮两行字**：语音与翻译是同一把 Key、同一个平台，分两个按钮等于让用户点两次再自己拼结论。
+                   ⚠️ 它**绕过翻译缓存**真发一次请求 —— 走缓存的话，Key 被撤销了照样报 ✓。 -->
+              <div class="field">
+                <button class="ghost-btn" id="translateTest" type="button">检测凭据</button>
+                <span class="field-status field-status-wide" id="translateTestSpeech"></span>
+              </div>
+              <p class="speech-note" id="translateTestNote">
+                语音合成与机器翻译共用同一把 API Key，但要在火山引擎控制台<b>分别开通</b>。
+              </p>
+              <p class="speech-note" id="translateTestResult"></p>
+            </div>
+
+            <div class="speech-group">
+              <div class="speech-group-title">译文缓存</div>
+              <p class="speech-note" id="translateCacheNote"></p>
+              <div class="field">
+                <button class="ghost-btn" id="translateClearCache" type="button">清空译文缓存</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="./bridge.js"></script>
+    <script type="module" src="./dist/manager.js"></script>
+  </body>
+</html>

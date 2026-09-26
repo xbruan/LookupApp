@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  0.2.0 壳的清单 —— **照参考实现的 app.manifest 抄的**（逐条：PerMonitorV2、true/pm、
+  longPathAware、Common-Controls、三个 supportedOS），只把 assemblyIdentity 换成这个项目的。
+
+  为什么必须有它（2026-09 "0.2.0 看起来很模糊，好像没有适配高分辨率屏幕"）：
+  没有这一条声明时进程被判为 **DPI 不感知**，Windows 让它在 96 DPI 下渲染、再把整块位图
+  按屏幕缩放（本机 125%）放大贴上去 —— **连 WebView2 里的文字一起发虚**。
+  本版几何又是"按物理像素算 + 依赖真实 DPI"（`ChromeWindow` 的投影偏移、`ManagerWindow`
+  的圆角、`Native.GetDpiForMonitor` 都乘 `DeviceDpi / 96`），所以不感知时**比例也会错**，
+  而不只是模糊。参考实现那份清单的注释写的就是这个理由：
+
+    逐显示器 DPI 感知（PerMonitorV2）。胶囊窗口的尺寸完全由主进程按物理像素摆放，
+    必须拿到真实 DPI，否则缩放显示器上会算错位置、边缘吸附也对不齐。
+
+  ⚠️ 挂载点在 `Lookup.App.csproj` 的 `<ApplicationManifest>app.manifest</ApplicationManifest>`。
+     这一条是"抄几何时漏掉的前提"，不是几何本身 —— 别在这里顺手改几何。
+-->
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="0.2.0.0" name="lookup.app" />
+
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
+    <security>
+      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+        <!-- 普通用户权限即可：不需要管理员 -->
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}" />
+      <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}" />
+    </application>
+  </compatibility>
+
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <!-- 逐显示器 DPI 感知（PerMonitorV2），与参考实现同一条 -->
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2, PerMonitor</dpiAwareness>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+    </windowsSettings>
+  </application>
+
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*" />
+    </dependentAssembly>
+  </dependency>
+</assembly>

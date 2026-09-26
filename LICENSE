@@ -1,0 +1,37 @@
+MIT License
+
+Copyright (c) 2026 xbruan
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## 第三方代码（这部分不适用上面的 MIT，按各自的许可走）
+
+本项目**内嵌一份第三方源码**：`native/vendor/speex/`（官方 libspeex 1.2.1 的解码路径，
+用来播 `.spx` 这类词典自带音频）。它按 **BSD 3-Clause** 授权，
+完整许可见 [`native/vendor/speex/COPYING`](native/vendor/speex/COPYING)，
+版权归 Xiph.Org Foundation / Jean-Marc Valin / Analog Devices / CSIRO / David Rowe /
+EpicGames / Jutta Degener, Carsten Bormann 等（见该文件开头的清单）。
+
+按 BSD 3-Clause 的要求，再分发时**必须保留**上面那份版权声明、条件与免责声明 ——
+本仓库把它原样放在 `native/vendor/speex/COPYING`，源码里也保留了每个文件的原始头注释；
+并且**不得**用 Xiph.org Foundation 或其贡献者的名义为衍生产品背书。
+
+除这一处之外，本项目没有内嵌其它第三方代码（前端构建只依赖 `esbuild`，走 npm 安装、不随仓库分发）。

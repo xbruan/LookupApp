@@ -1,0 +1,892 @@
+/* ==========================================================================
+   词库管理窗口
+   ========================================================================== */
+
+body {
+  background: var(--shell-bg);
+  color: var(--text);
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--shell-bg);
+}
+
+/* ------------------------------ 标题栏 ------------------------------ */
+
+.titlebar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  padding: 0 10px 0 16px;
+  border-bottom: 1px solid var(--divider);
+  -webkit-app-region: drag;
+}
+.titlebar button {
+  -webkit-app-region: no-drag;
+}
+.titlebar-mark {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+}
+.titlebar-mark .app-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+}
+.titlebar-text {
+  /* 窄窗口下标题要能被压缩，否则会把右边那三个按钮顶出去 */
+  min-width: 0;
+}
+.titlebar-text h1 {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+}
+.titlebar-spacer {
+  flex: 1 1 auto;
+}
+
+/* ------------------------------ 主体 ------------------------------ */
+
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* 内边距交给各页自己 —— 每页都是独立的滚动容器（见下面的 .pane） */
+}
+
+/* 工具栏：只剩「添加词典文件」一个按钮。下缘那条虚线是"工具栏"与"列表"的分界
+   （与其它三页分组那条虚线同一套）。 */
+.toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--divider);
+}
+
+/* 主按钮（「添加词典文件」）：**全窗口唯一一个**填充按钮 —— 它与 `.ghost-btn` 只差
+   "有没有填充色"这一件事（同高、同字号、无投影），等级不再差三件。
+   字色用 `var(--shell-bg)` 而不是 `--text-invert`：后者只有亮色一份，暗色下白字压在
+   `--accent` 上对比度只有 2.6:1；`--shell-bg` 一亮一暗正好各自当填充底上的字色。 */
+.primary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--shell-bg);
+  background: var(--accent);
+  transition: background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.primary-btn:hover {
+  background: var(--accent-hover);
+}
+.primary-btn:active {
+  transform: scale(0.98);
+}
+
+/* 词库列表：一行一条 + 点开看详情。收起时一本一行（名字 + 词条数 + 展开箭头），
+   路径 / 资源库 / 编码 / 版本 / 三个动作按钮都进详情 —— 信息一个没删，只是默认收起。
+   ⚠️ 用 `grid` 不用嵌套 flex：详情要横跨整行（含单选点那一列），收起行的三段又要各自对齐，
+      两行三列一次说清；换 flex 就得靠 margin 去凑。
+   ⚠️ **不给整行加 `:hover` 底色**：整行并不是可点的（可点的只有单选点、名字上的双击、行尾箭头），
+      加一层悬浮底就是"看着能点、点了没反应"；箭头按钮自己有 hover。 */
+.dict-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0 14px;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.dict-item {
+  display: grid;
+  /* 单选点 | 名字 + 词条数（吃掉其余宽度） | 移除 | 展开箭头 */
+  grid-template-columns: 16px minmax(0, 1fr) 28px 26px;
+  column-gap: 8px;
+  align-items: center;
+  padding: 10px 8px;
+  border-radius: 0;
+  border: 0;
+  background: none;
+}
+.dict-item + .dict-item {
+  border-top: 1px dashed var(--divider);
+}
+/* ★「当前词典」**只由那个填实的小圆点表示** —— 所以这条规则**故意是空的**；
+   但 `data-current` 这个标记仍被别的选择器用到（下面那个粗体、以及 `.dict-radio`），**别删**。
+   ⚠️ 也别再往这里加"底色 / 描边 / 竖条"：一个事实用一种手段说，同屏三种只会让人猜它们是不是在说不同的事。 */
+
+/*
+ * 名字的字重：**只有**选中的词典名显示为粗体 —— 一列全 600 等于没有强调。
+ * ⚠️ 基准值 400 写在下面的 `.dict-name` 里，要改得**两处一起改**，否则会被它盖回去；
+ *    这一条靠**优先级**（0,2,0 > 0,1,0）生效，与先后顺序无关。
+ */
+.dict-item[data-current='true'] .dict-name {
+  font-weight: 600;
+}
+
+.dict-radio {
+  grid-column: 1;
+  grid-row: 1;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.8px solid var(--shell-border-strong);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+/* 悬浮反馈只给**真正可点的那一处**（那一圈单选点）：整行不可点，别让行本身亮起来。
+   `border-width` **不动**：125% 屏幕缩放下 Chromium 把边框吸附到设备像素，
+   1.8px 与 1.6px 都落在 2 个设备像素上，改了也看不见。 */
+.dict-radio:hover {
+  border-color: var(--accent);
+}
+.dict-item[data-current='true'] .dict-radio {
+  border-color: var(--accent);
+}
+.dict-item[data-current='true'] .dict-radio::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* 收起那一行：名字（可省略）+「载入中 / 载入失败」徽标 + 词条数（右对齐）。
+   用 `baseline` 对齐而不是 `center`：名字 13.5px、数字 11.5px，按中心对齐会看着"数字偏高"。 */
+.dict-line {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.dict-line .dict-name {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+/* 「词条 239,685」：靠右、等宽数字、超长省略号。收起行只回答"这是哪本、什么体量" ——
+   "占多少磁盘"与资源库 / 编码 / 版本同类（都在详情里）。`tabular-nums` 是为了上下几本对齐着看。 */
+.dict-brief {
+  flex: 1 1 auto;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 收起态那颗「移除」常驻行尾（展开箭头左边），详情里**不再重复放一个** ——
+   同一个动作同一屏放两遍，只会让人怀疑两者不一样。`data-size="sm"`（28px）与 26px 的箭头差不多大。 */
+.dict-remove {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+/* 展开箭头：一个真的 `<button>`（不是给整行挂 click）—— 它才是"可点"的那一处，
+   所以占 26px 见方、有 hover 底色，像其它页的按钮一样看得出手感。
+   展开时把**整个图标**转 180°（只做了朝下那一个方向）。 */
+.dict-toggle {
+  grid-column: 4;
+  grid-row: 1;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: var(--text-faint);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.dict-toggle:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.dict-item[data-open='true'] .dict-toggle .icon {
+  transform: rotate(180deg);
+}
+
+/* 详情：横跨整行（含单选点那一列），左边留 24px 与名字对齐（16px 单选点 + 8px 列间距）；
+   默认 `display: none` —— 收起是常态。
+   ⚠️ 展开态是**每本各自的**，所以这里没有任何"只允许一行是 open"的规则 —— 也不许加
+      （`:has()` 或兄弟选择器去关别人都不行）：摊开 A 再看 B，A 不许自己收起来。 */
+.dict-detail {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: none;
+  margin-top: 8px;
+  padding-left: 24px;
+}
+.dict-item[data-open='true'] .dict-detail {
+  display: block;
+}
+/* 详情里的路径：**也只占一行**（超出省略号），完整路径挂在 `title` 上 —— 折行显示时
+   三本词典会全部折成两行，那是"这一页太重"的三分之一。 */
+.dict-detail .dict-path {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 详情里那四项元信息（大小 / 资源库 / 编码 / 版本） */
+.dict-rest {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+/* 详情里那排动作：**排序（上移 / 下移）在最前**，然后改名、打开所在文件夹；靠右排。
+   排序放这里而不是收起行上：那一行已经有五样东西了，而排序是偶尔做一次的事。 */
+.dict-detail .dict-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.dict-name {
+  min-width: 0;
+  /* 14 → 13.5px：它原来是这扇窗里最大的字（仅次于 14.5px 的窗口标题），而其它三页最重的
+     正文是 12.5px —— 同一个窗口里两套字号阶梯，看着就像"这一页没做完"。
+     ⚠️ **字重 400** 是"基准"：选中的那一本由上面 `[data-current='true'] .dict-name`
+     （优先级更高）盖成 600。别把这里的 400 改回 600 —— 三本全粗等于没有强调。 */
+  font-size: 13.5px;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.badge {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--text-dim);
+}
+/* ⚠️ 剩下这两档 tone 是**状态**（载入中 / 载入失败），必须有色，也**不许**顺手删 ——
+   「当前词典」那档蓝底蓝字胶囊已删：同一行里单选点就已经在强调，再加一个蓝色元素是重复的。 */
+.badge[data-tone='danger'] {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.badge[data-tone='warn'] {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+/* 路径那一行的**基础样式**（等宽字体、自动断行）。它现在只出现在**详情**里，而详情那条更严的
+   规则（单行省略 + `title` 存全路径）排在后面、生效的是它；这里留的是"脱离详情也还能看"的兜底
+   （字体与颜色）—— 别把 `word-break` 当成现在的行为。 */
+.dict-path {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  word-break: break-all;
+  line-height: 1.5;
+}
+/* 元信息分两档色：数字那一档用 `--text-faint`（`.dict-brief` / `.dict-path` 是同类），
+   说明那一档用 `--text-dim`（`.dict-rest`）。 */
+
+.dict-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* ------------------------------ 就地改名 ------------------------------ */
+
+.rename-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--shell-bg);
+  border: 1px solid var(--accent-ring);
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.rename-input:focus {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ------------------------------ 空态 ------------------------------ */
+
+.empty-state {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 30px;
+  text-align: center;
+}
+.empty-state[hidden] {
+  display: none;
+}
+.empty-icon {
+  display: grid;
+  place-items: center;
+  /* 56 → 40px、底由 `--accent-soft` 改成中性的 `--hover`、图标由 `--accent` 改成 `--text-faint`：
+     空态是"还没有东西"的一屏，一块抢眼的蓝色方块与这句话正好相反。图标本身的大小没动。 */
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--hover);
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+.empty-state h2 {
+  margin: 0;
+  /* 14/600 与词典名同一档收法，别让空态比有词典时还响 */
+  font-size: 14px;
+  font-weight: 600;
+}
+.empty-state p {
+  margin: 0;
+  max-width: 420px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-faint);
+}
+
+/* ------------------------------ 底栏：已删 ------------------------------ */
+/* 底栏整块已删（元素连同四条规则）：那行「存储位置」从来没有被填过，是一块空着的死版面，
+   配置目录已搬进常规页的「数据」组。以后要再放状态行，先想清楚谁来填它。 */
+
+.select {
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--shell-bg);
+  border: 1px solid var(--shell-border-strong);
+  cursor: pointer;
+}
+.select:focus {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+}
+
+/* ------------------------------ 分页签 ------------------------------ */
+
+/* 页签贴在标题栏下面，和内容区共用同一条分隔线。当前页用"下缘一条强调色"表示，不做成胶囊按钮 ——
+   这套界面里胶囊是"可点的动作"（添加词典文件那种），页签是"当前在哪一页"，两回事。 */
+.tabs {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--divider);
+}
+.tab {
+  position: relative;
+  height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+  color: var(--text-dim);
+  border-bottom: 2px solid transparent;
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.tab:hover {
+  color: var(--text);
+}
+.tab[data-active='true'] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   各页内容：每一页自己滚（而不是让整个窗口滚）—— 页与页高度差不多但内容长短不一，
+   共用一条滚动条会让"切页之后位置还停在上页"这种怪事出现。
+   ========================================================================== */
+
+.pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 0;
+}
+/* 这一条不能少：`[hidden]` 只是 UA 样式里的 `display:none`，优先级比 `.pane{display:flex}` 低，
+   不显式写一条的话被隐藏的那一页照样会显示出来。 */
+.pane[hidden] {
+  display: none;
+}
+/* 语音页与翻译页的内容都可能比窗口高，**整页自己滚**；词库页保持"列表自己滚、工具栏不动"。
+   翻译页不列上就会溢出窗口（缺 Key 的横幅一出现内容更高，底部按钮还会压在设置项上）；
+   常规页也列上：它只有两项，但窗口能被拖到很矮，而 `auto` 只在真放不下时才出滚动条。 */
+.pane[data-pane='general'],
+.pane[data-pane='speech'],
+.pane[data-pane='translate'] {
+  overflow-y: auto;
+  padding-bottom: 16px;
+}
+
+/* 常规页的标签列要比语音页宽：`--speech-label-w` 的 54px 是按语音页最宽的四个汉字（48px）定的，
+   而这一页的标签是「关闭悬浮窗时」六个汉字 —— 不覆盖就会被挤成两行。
+   81px = 六个 12.5px 汉字（75）+ 6px 余量；⚠️ 改文案（标签变长）或改字号时要重算，别让它又折成两行。 */
+#paneGeneral .speech-body {
+  --speech-label-w: 81px;
+}
+
+/* ★ 常规页上「关闭悬浮窗时」这一行**要与其它项长得一样** —— 它用的是语音页那套行几何里的
+   `.field-label`（12px / `--text-dim`，从属文字），而这一页另外两项是 `.switch-row`
+   （12.5px / `--text`，与正文同色）；同一个组里三种规格混着排，看着就是"这一项没做完"。
+   只在这一页覆盖成一样的规格，**不动 `.field-label` 本身**（语音页那排标签的从属感是刻意的）。 */
+#paneGeneral .field-label {
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+/* 勾选框下面那行小字（"改了要下次启动才生效。"）与下一项只隔 `.field` 自己的 8px 下边距，
+   视觉上贴在一起。**只加在"小字后面那个 .field"上**：常规页里只有「悬浮窗」这一组是这个顺序
+   （「数据」组是"按钮在前、小字在后"），所以不会误伤别的行。 */
+#paneGeneral .speech-note + .field {
+  margin-top: 10px;
+}
+
+/* ==========================================================================
+   语音设置页
+   ========================================================================== */
+
+/* 语音页的行几何。一行是三段：**标签列 | 控件 | 行尾**（行尾可以什么都没有）；
+   约定只有一条：**控件把这一行剩下的地方全吃掉**。
+   · 输入框那一行没有行尾 → 四个输入框结构完全相同、自然一样长；
+   · 五个滑块行有**同样的**行尾（数字 40 + 按钮 45 + 两个间距）→ 五个滑块也自然一样长。
+   两者长度不再相等（输入框更长）是**有意的**，别再"顺手"把它们拉齐。
+   ⚠️ 行尾那个按钮**不能**写 `margin-left: auto`：flex 里 auto 外边距**先**吃掉空闲空间、
+      之后才轮到 `flex-grow`，滑块会一点空间也分不到、停在基础宽度上，"撑满"当场失效。
+      撑满这件事完全交给控件的 `flex: 1 1 auto`。
+   ⚠️ 改这里的数要连着量一次真实 DOM（ --match manager.html --pane-layout speech`），
+      别照算式算：内容区宽度还受纵向滚动条影响（464 DIP 的窗口里内容区只有 422.4px）。 */
+.speech-body {
+  flex: 1 1 auto;
+  /* 标签列：最宽的标签是四个汉字（48px），54 留 6px 余量 */
+  --speech-label-w: 54px;
+  --speech-gap: 8px;
+  /* 数字列：最长的值是「+12.5」五个字符 ≈ 33.7px（等宽 11.5px），40 够用 */
+  --speech-value-w: 40px;
+  /* 输入框里那格状态字（已配置 / 还没有填 API Key）占掉的右边距：它是**绝对定位画在输入框里**的，
+     所以要给输入框留出这块地方 —— 既免得长 Key 的圆点跑到字底下，也给 WebView2 密码框自带的
+     "显示密码"眼睛让开位置。 */
+  --speech-status-inside-w: 78px;
+  padding-bottom: 16px;
+}
+.speech-group + .speech-group {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--divider);
+}
+.speech-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  /* 允许换行：那几行"长错误原文"（`.field-status-wide`）要靠 `flex: 1 1 100%` 自己占一整行。
+     换行**不影响控件长度**：`flex-basis: 100%` 的那一格永远另起一行，第一行剩下的空间与它在不在无关。 */
+  flex-wrap: wrap;
+  gap: var(--speech-gap);
+  margin-bottom: 8px;
+}
+.field-label {
+  /* 定宽：见 .speech-body 顶上那段（标签列一变宽，同一行的控件就变短） */
+  flex: 0 0 var(--speech-label-w);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+/* 下拉框与输入框、滑块一样吃满剩余空间（`flex: 1 1 auto`）：下拉框本来就该独占整行。 */
+.field .select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* 滑块 / 输入框右边那个数字格：**定宽**（`--speech-value-w`）+ **右对齐**。
+   五个滑块宽度一样、数字格又都紧跟在滑块右边，所以五个数字格的左右边缘落在同一列，一眼能上下比较 ——
+   "+1.5" 比 "-24" 宽，靠内容撑宽就对不齐了，所以不能左对齐也不能不定宽。 */
+.field-value {
+  flex: 0 0 var(--speech-value-w);
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+/* 行尾动作按钮（四个「试听」+ 语速那一行的「重置」）：内边距 10 而不是 14 —— 它站在滑块右边、
+   和数字挤在同一条尾巴上，每 1px 都直接变成滑块的可用长度。文案都是**两个汉字**（试听 / 重置），
+   所以四个「试听」与那个「重置」宽度完全相同（45px），这也是"五个滑块一样长"的前提（行尾宽度一致）。
+   ⚠️ **不许**写 `margin-left: auto`：auto 外边距会先把空闲空间吃掉，滑块就撑不满了。 */
+.field-action {
+  flex: 0 0 auto;
+  padding: 0 10px;
+}
+/* 「API Key」那一格的包装：输入框撑满整行，状态字**画在输入框里面最右边**。
+   用"包装 + 绝对定位"而不是"行尾那一格"：状态字一旦参与 flex 排布，它有多宽就直接从输入框身上扣掉多少；
+   绝对定位之后它**不占排布空间**，输入框的长度与"有没有状态要说"完全无关。
+   包装是 `position: relative` 的定位参照，同时自己 `flex: 1 1 auto` 吃满这一行。 */
+.field-input-inside {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.field-input-inside .text-input {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+/* 输入框里面的状态字：右对齐、贴在输入框里最右边、垂直居中；宽度上限就是给它预留的那块地方
+   （超出走省略号，完整原文在 title 上）。它盖在输入框上，所以加了输入框同色的底 ——
+   万一哪次状态特别长，底下的字也是"被盖住"而不是"两行字叠在一起看不清"。 */
+.field-status-inside {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: var(--speech-status-inside-w);
+  padding-left: 6px;
+  background: var(--shell-bg);
+}
+/* 长原因（60+ 字：后端那句 error 原文）在这一格里**另起一行**，不挤在输入框上 ——
+   这里只要把上面那套绝对定位撤掉（`.field-status-wide` 自己有 `flex: 1 1 100%`）。 */
+.field-input-inside .field-status-wide {
+  position: static;
+  transform: none;
+  max-width: none;
+  padding-left: 0;
+  background: none;
+}
+
+/* 滑块：自绘一点，免得和这套界面的圆角风格差太远 */
+.range {
+  /* 吃满这一行剩下的空间：五个滑块行的行尾结构完全一样，所以它们算出来一样长
+     （输入框那一行没有行尾，于是更长 —— 这是有意的）。 */
+  flex: 1 1 auto;
+  min-width: 120px;
+  /* `margin: 0` 不能省：`input[type=range]` 带着浏览器样式表里的 `margin: 2px`，
+     不清掉的话滑块会比同一列的输入框**往右挪 2px**（左边缘 80 vs 78），
+     于是"滑块与输入框落在同一列"就不成立了。 */
+  margin: 0;
+  height: 20px;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+.range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--divider);
+}
+.range::-webkit-slider-thumb {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--shell-bg);
+  box-shadow: 0 1px 3px rgba(20, 24, 40, 0.3);
+}
+
+.speech-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--text-faint);
+}
+/* 申请步骤里的网址在 464 DIP 的窗口里放不下一行：不加这条，那个超长的 URL token
+   会把整段顶出视口（`.pane` 只滚纵向）。 */
+.speech-note code {
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+.speech-privacy {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(217, 72, 63, 0.08);
+  border: 1px solid rgba(217, 72, 63, 0.22);
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+
+/* 音源优先级说明（语音页顶上第一段）：它替掉「默认音源」下拉框，所以要比周围注解显眼 ——
+   **加粗 + 黑色 + 稍大一点，但仍然一行**。12px 就是放得下的最大值（11px 余 39.9px、
+   12.5px 已经顶出去 9.2px），想再大只能先改文案或把内边距调窄。
+   ⚠️ 必须写在 `.speech-note` **后面**：同一个元素上两个类撞了 margin，靠后生效的是它。 */
+.speech-priority {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--shell-bg-sub);
+  border: 1px solid var(--shell-border);
+  font-weight: 600;
+  font-size: 12px;
+  color: #000;
+  white-space: nowrap;
+}
+.speech-priority b {
+  color: inherit;
+}
+@media (prefers-color-scheme: dark) {
+  /* 暗色主题下"黑色"看不见：换成该主题最强的正文色 —— 要的是"显眼"，不是某个色值。
+     `nowrap` 那一行必须配实测断言： --voice-layout` 量 scrollWidth ≤ clientWidth。 */
+  .speech-priority {
+    color: var(--text);
+  }
+}
+/* 出错时才出现的那一行（`#speechSummary`）：它默认带 `hidden`（那些错不许消失，但平时一个字都不该占）。
+   显式写一条 `[hidden]` 是防呆 —— `.speech-note` 哪天添了 display，UA 那条 `display:none` 就会被盖掉，
+   于是"没有错误"会显示成一个空行。 */
+.speech-issue[hidden] {
+  display: none;
+}
+/* 出错那几行要说清原因；灰字和正常注解分不开，等于没说 */
+.speech-note[data-state='error'] {
+  color: var(--danger);
+}
+
+/* 豆包表单：一行一个字段（标签 / 输入框 / 行尾状态） */
+.text-input {
+  /* 四个输入框（Key / TTS 模型 / 英文音色 / 中文音色）都撑满这一行剩下的地方：结构完全相同、
+     都不带行尾，所以四个自然一样长。Key 那个包在 `.field-input-inside` 里（状态字画在框里），
+     由下面那条改成 `flex: 1 1 100%` 占据包装的整宽。 */
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--shell-border-strong);
+  background: var(--shell-bg);
+  color: var(--text);
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+}
+/* API Key 那个框：右边留出"状态字画在框里"的那块地方（见 .speech-body 的变量说明） */
+.field-input-inside .text-input {
+  padding-right: calc(var(--speech-status-inside-w) + 8px);
+}
+.text-input:focus {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+}
+/* 「TTS 模型」那一格是只读的（后端字段仍叫 resourceId）：颜色淡一点，别让人以为这里能改 */
+.text-input[readonly] {
+  color: var(--text-dim);
+  background: var(--shell-bg-sub);
+}
+/* 状态文字（"已配置 / 还没有填 API Key"、以及「平衡音量」的结果格）：**不再是行尾那一格**
+   （Key 那格搬进输入框里，见 `.field-status-inside`），所以 `margin-left: auto` 与"行尾列宽度"
+   都撤掉了，留着的这一种只服务按钮下面那个纵向状态列（见下）。
+   `flex: 0 1 auto` + `min-width: 0` 保留：文字长了要能自己收缩，不然会被 wrap 甩到下一行；
+   收缩到底由 title 兜着（完整原文挂在 title 上）。 */
+.field-status {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.field-status[data-state='ok'] {
+  color: var(--accent);
+}
+.field-status[data-state='error'] {
+  color: var(--danger);
+}
+/*
+ * 成功那一种情况（第 3 条：保存成功要**绿色小字**「检测通过，已保存」）。
+ * 绿色不走 `--accent`（那是蓝的，跟"成功"没关系），也不写死色值 ——
+ * 用 tokens.css 里新加的 `--success`，亮/暗两套各一份，暗色下才看得见（见那里的注释）。
+ */
+.field-status[data-state='success'] {
+  color: var(--success);
+}
+/*
+ * 长原因那一种情况（60+ 字）。
+ * 用 .field-status 的"一行省略"正好会把最关键的那半句裁掉，所以这种状态下换成这个：
+ * 自己占一整行、行高放开、长 token 也允许从中间断（音色 ID 是 40+ 字符的乱码）。
+ * 「保存 / 平衡音量」没通过时后端那句 error 原文（见 markDoubaoFailure），
+ * 以及两条增益滑块置灰的原因（见 setGainRow），都挂在这套样式上。
+ * 放在输入框里的时候（`.field-input-inside .field-status-wide`）还要把绝对定位撤掉，
+ * 它才能自己占一整行。
+ */
+.field-status-wide {
+  flex: 1 1 100%;
+  max-width: none;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  margin-top: 2px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * 这里原来还有一套 `.doubao-tests` / `.doubao-tests li[...]`（「检测豆包」那份逐行明细的样式）。
+ * 那份明细连元素带渲染函数一起删掉了（用户第 4 条：不再显示 "en_female_dacey..计费…" 那两行），
+ * 于是这套 li 样式再没有消费者 —— 一并清掉，别留一个没人用的类（留着会让人以为还有那个列表）。
+ */
+
+.speech-actions {
+  display: flex;
+  align-items: center;
+  /* 三个按钮（保存 / 平衡音量 / 清空发音缓存）：宁可换行，也别顶出 464 DIP */
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+/*
+ * 按钮下面那个**纵向状态列**（第 5 条）：
+ *   第一行 = 保存情况（`#doubaoApplyResult`：绿字「检测通过，已保存」/ 红字「保存失败，HTTP 403」）
+ *   第二行 = 「平衡音量」的结论（`#doubaoBalanceResult`：进度 / 已平衡 / 失败原因）
+ * 每一行自己占一行，**空的那一行整行 `hidden`**（见 main.ts 的两处 xxxNote），
+ * 所以"没有保存情况时「已平衡」自然落到第一行"这件事是布局算出来的、不需要两套位置。
+ * `flex: 1 1 100%`：整列自己另起一行，按钮那一行只由按钮宽度决定（三个按钮因此永远同一行）。
+ */
+.speech-status-stack {
+  flex: 1 1 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+/*
+ * 状态列里那两行：**一行封顶**（进度 / 已保存 / 已平衡 / 失败原因）。
+ *
+ * 为什么必须一行：用户对失败提示的要求是"说遇到的问题，不超过一行" ——
+ * 后端那句原文经常是 60+ 字（把音色 ID、错误码、服务端原话都带上），按自然折行就是三行，
+ * 而这一格在按钮下面占三行会把整页推长。所以这里换成"一行省略"，
+ * **完整的原文一个字都不丢 —— 它挂在 title 上**（见 main.ts 的 showBalanceNote /
+ * showApplyNote），悬停就能看全。那正好也是"置灰/失败必须说明原因"
+ * 与"别在页面上摊开三行"这两条约定的交点。
+ */
+.speech-status-stack .field-status {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ==========================================================================
+   翻译页（机器翻译）
+   ==========================================================================
+   这一页只有三个控件，样式都沿用语音页那几套（`.speech-group` / `.field` / `.speech-note`
+   / `.ghost-btn`），只补两样这个仓库以前没有过的东西：**开关**与**缺 Key 的横幅**。
+   ========================================================================== */
+
+/*
+ * 开关那一行：整行可点，方框 14px。
+ * 这个程序以前一个复选框都没有（设置项都是下拉框或滑块），所以样式从这里立。
+ */
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+}
+.switch-row input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+/*
+ * 「客观不可用」（缺 Key）与「用户自己关掉的」必须看得出区别（开发指导文档 §B7 硬要求 1）。
+ * 所以缺 Key 时给整行打 `data-disabled`：字变淡、光标不再是手型，
+ * **原因写在 title 上**（本仓库一贯的约定：置灰 + 说明原因，不许点了没反应）。
+ */
+.switch-row[data-disabled='true'],
+.switch-row[data-disabled='true'] input[type='checkbox'] {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+/*
+ * 缺 Key 时顶上那条横幅：说明 + 一个**必须可点**的跳转（那个按钮任何时候都不置灰）。
+ * 视觉沿用语音页那条隐私提示（同底色/描边/圆角），不另造一套。
+ */
+.translate-missing {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(217, 72, 63, 0.08);
+  border: 1px solid rgba(217, 72, 63, 0.22);
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+/*
+ * 这两条 `[hidden]` 是防呆（与 `.speech-issue[hidden]` 同一个理由）：
+ * 哪天这两个类上加了 display，UA 那条 `display:none` 就会被盖掉，
+ * 于是"没有缺 Key"会显示成一个空的红色框。
+ */
+.translate-missing[hidden],
+.translate-jump[hidden] {
+  display: none;
+}
+/* 跳转按钮自己一行、靠左；`.speech-body` 是纵向 flex，所以要自己收宽度 */
+.translate-jump {
+  align-self: flex-start;
+  margin: 0 0 12px;
+}
+

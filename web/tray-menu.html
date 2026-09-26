@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'"
+    />
+    <title>托盘菜单</title>
+    <link rel="stylesheet" href="./styles/tokens.css" />
+    <link rel="stylesheet" href="./styles/components.css" />
+    <link rel="stylesheet" href="./styles/floating.css" />
+    <link rel="stylesheet" href="./styles/tray-menu.css" />
+  </head>
+  <body>
+    <!-- 窗口尺寸由主进程按内容量算，这里只负责把菜单画出来 -->
+    <div class="tray-menu-shell">
+      <div class="context-menu tray-menu" id="menu" role="menu"></div>
+    </div>
+    <script src="./bridge.js"></script>
+    <script type="module" src="./dist/tray-menu.js"></script>
+  </body>
+</html>

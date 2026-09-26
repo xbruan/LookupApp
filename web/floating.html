@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; font-src 'self' data:; frame-src https://*.dictres.invalid; connect-src 'self'; object-src 'none'; form-action 'none'"
+    />
+    <title>查词</title>
+    <link rel="stylesheet" href="./styles/tokens.css" />
+    <link rel="stylesheet" href="./styles/components.css" />
+    <link rel="stylesheet" href="./styles/floating.css" />
+  </head>
+  <body>
+    <!--
+      悬浮窗：一枚常驻胶囊（输入）+ 一块可展开的面板（候选 / 词条正文 / 历史）。
+      本文件只有结构性标记 —— 逻辑在 `src/floating/main.ts`，视觉在 `styles/floating.css`。
+      注释只写"这里为什么必须长这样"，设计经过见项目文档。
+    -->
+    <div class="stage" id="stage">
+      <!-- 被吸到屏幕边缘后剩下的窄条；鼠标移上去把完整界面弹出来 -->
+      <div class="strip" id="strip" hidden></div>
+
+      <div class="content" id="content" data-direction="down" data-align="left">
+        <!-- 展开区：候选列表 / 词条正文 / 历史共用这一块（"下拉列表"与"内容框"是同一个面板的不同形态） -->
+        <section class="panel" id="panel" hidden aria-live="polite">
+          <header class="panel-head" id="panelHead" hidden>
+            <!--
+              ⚠️ 这一格**保留**（带 `hidden`，界面上看不见）：它是"当前词条"的**检查标准** ——
+              冒烟//诊断有 60 多处读它的 `textContent`（`hidden` 不影响 `textContent`）。
+              别删它、也别摘掉 `hidden`（ `ui-static-check` 会判红）。
+            -->
+            <span class="entry-word" id="entryWord" hidden></span>
+            <span class="entry-dict" id="entryDict" hidden></span>
+            <span class="panel-head-spacer"></span>
+            <!-- 「返回候选」：做成图标按钮而不是文字胶囊 —— 标题栏只有 464 DIP 宽，文字胶囊会占掉两倍多，含义交给 title -->
+            <button class="icon-btn" id="entryBack" type="button" title="返回候选" hidden></button>
+            <!-- 链接跳转的返回：entry:// 链接可以连着点好几层，这个按钮一层层退回去；没跳过时置灰 -->
+            <button
+              class="icon-btn"
+              id="entryBackLink"
+              type="button"
+              title="返回上一词条"
+              disabled
+            ></button>
+            <!-- 回到顶部：滚动位置由词条正文自己上报（宿主读不到跨域 iframe 的 scrollTop），已在顶部时置灰 -->
+            <button
+              class="icon-btn"
+              id="entryTop"
+              type="button"
+              title="回到顶部"
+              disabled
+            ></button>
+            <!-- 朗读。⚠️ 标题栏这排图标按钮固定 32px、**永不压缩** —— 词典名再长也挤不掉它。没有可用音源时置灰并把原因写在 title 上 -->
+            <button
+              class="icon-btn"
+              id="entrySpeak"
+              type="button"
+              data-playing="false"
+              title="朗读词条"
+              disabled
+            ></button>
+            <!--
+              复制释义。⚠️ **不做也不需要 Ctrl+C**：WebView 的浏览器加速键是关着的，
+              前端也没有任何 Ctrl+C 处理 —— 提示里写上它就等于骗用户去按一个没反应的键。
+            -->
+            <button class="icon-btn" id="entryCopy" type="button" title="复制释义"></button>
+            <button class="icon-btn" id="entryClose" type="button" title="收起（Esc）"></button>
+          </header>
+          <div class="panel-body" id="panelBody" data-mode="list">
+            <ul class="suggest" id="suggestList"></ul>
+            <div class="empty-hint" id="emptyHint" hidden></div>
+            <ul class="history-list" id="historyList" hidden></ul>
+            <div class="reader" id="reader" hidden>
+              <!--
+                「这一页是怎么来的」：borrow = 借查、translate = 机器翻译、terminal = 三档都没结果的说明。
+                ⚠️ 三种来历必须说清，否则用户会以为"词典里真有这条"；空字符串时整行隐藏。
+              -->
+              <div class="reader-via" id="readerVia" data-via="current" hidden></div>
+              <iframe
+                id="entryFrame"
+                title="词条正文"
+                sandbox="allow-scripts"
+                referrerpolicy="no-referrer"
+              ></iframe>
+              <div class="reader-loading" id="readerLoading">正在加载词条…</div>
+              <!--
+                ⚠️ 这个反馈条**必须放在 `.reader` 里面**：要求是"出现在内容框底部中央、显示范围在内容框内部"，
+                而 `.reader` 是 `position: relative` + `overflow: hidden` —— 于是这件事**由结构本身成立**，
+                不用调坐标去凑（窗口顶部那条 `#toast` 贴的是窗口边，会盖到胶囊上、也会伸到内容框外面）。
+              -->
+              <div class="reader-toast" id="readerToast" data-show="false" data-tone="info"></div>
+            </div>
+          </div>
+          <div class="suggest-foot" id="suggestFoot" hidden>
+            <span><kbd>↑</kbd> <kbd>↓</kbd> 选择</span>
+            <span><kbd>Enter</kbd> 查看</span>
+            <span><kbd>Esc</kbd> 收起</span>
+            <span class="spacer"></span>
+            <span id="suggestCount"></span>
+          </div>
+        </section>
+
+        <!-- 唯一的常驻输入胶囊 -->
+        <div class="pill" id="pill" data-focused="false">
+          <button class="pill-grip" id="grip" type="button" title="拖动可移动悬浮窗；右键打开词库 / 关闭菜单"></button>
+          <input
+            class="pill-input"
+            id="input"
+            type="text"
+            placeholder="输入要查的词…"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+          />
+          <span class="pill-spinner" id="spinner" hidden></span>
+          <div class="pill-trailing">
+            <span class="pill-meta" id="meta">正在加载词库…</span>
+            <div class="pill-actions" id="actions">
+              <!--
+                ⚠️ 「清空输入」排在「查词历史」**左边**：清空作用于输入框里的字，所以贴文字区那一侧；
+                最右缘那个"角"留给**常驻可用**的历史 —— 输入框空着时清空是灰的，让它占右端会让胶囊右边缘发虚。
+                初始 `disabled` 只是别在第一帧闪一下"可点"，随后由脚本按内容刷新。
+              -->
+              <button class="icon-btn" id="btnClear" type="button" title="清空输入" disabled></button>
+              <button class="icon-btn" id="btnHistory" type="button" title="查词历史"></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右键文本菜单：四项走原生命令（见 `docs/输入框右键菜单改走原生编辑命令.md`） -->
+    <div class="context-menu" id="ctxMenu" hidden role="menu"></div>
+
+    <!--
+      选中文字时浮现的快捷按钮：**两处共用这一个元素**（样子必须完全一致），动作不同 ——
+      输入框里选中 = 复制 / 剪切；词条正文里选中 = 查词 / 朗读 / 复制。
+      ⚠️ 正文那排的「查词」**不置灰**：能不能查、落到哪条词条是**点击那一刻**才问的（`dict:resolve` 只查表、不写历史）。
+      「选中的是不是当前词条」不是字符串问题 —— 词典会把 `apples` 这类变形重定向到原型词条，
+      只有拿**解析落点**去比才对；落点就是当前词条、或查不到，都只弹一句提示、正文一步不动。
+    -->
+    <div class="sel-toolbar" id="selToolbar" hidden></div>
+
+    <!-- 关闭询问 -->
+    <div class="backdrop" id="closeBackdrop" hidden>
+      <div class="dialog" id="closeDialog" role="dialog" aria-modal="true" aria-labelledby="closeTitle">
+        <h2 id="closeTitle">关闭悬浮窗</h2>
+        <p>选择关闭方式。勾选"不再询问"后，之后将直接执行同一种方式。</p>
+        <div class="dialog-actions">
+          <button class="dialog-choice" id="choiceTray" type="button">
+            <span id="choiceTrayIcon"></span>
+            <span class="choice-text">
+              <span>最小化到托盘</span>
+              <span class="choice-sub">悬浮窗隐藏，托盘图标常驻，随时可唤出</span>
+            </span>
+          </button>
+          <button class="dialog-choice" id="choiceQuit" type="button">
+            <span id="choiceQuitIcon"></span>
+            <span class="choice-text">
+              <span>直接退出</span>
+              <span class="choice-sub">结束程序并释放词典占用的内存</span>
+            </span>
+          </button>
+        </div>
+        <div class="dialog-foot">
+          <label class="checkbox">
+            <input type="checkbox" id="closeRemember" />
+            <span>不再询问</span>
+          </label>
+          <span class="spacer"></span>
+          <button class="ghost-btn" id="closeCancel" type="button">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="./bridge.js"></script>
+    <script type="module" src="./dist/floating.js"></script>
+  </body>
+</html>

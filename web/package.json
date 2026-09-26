@@ -1,0 +1,14 @@
+{
+  "name": "lookup-0.2.0-web",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "0.2.0 的网页前端（`https://lookup.local/…` 那个虚拟站点就是它）。它只是视图层：一个字的业务判断都不许有 —— 查什么、落点是谁、正文在哪、出路有几条，全部由 C 内核给（见 ../docs/api/abi.md）。",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2"
+  }
+}

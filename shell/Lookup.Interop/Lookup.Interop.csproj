@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Lookup.Interop —— **生成的 C# 绑定**（`DshLookup.g.cs`，由 tools/gen-bindings.mjs
+    从 abi/lookup.abi.json 产出）。
+
+    这一层是"内核的 ABI 在 C# 里的样子"：`DshRaw` 是逐条的 `DllImport`，
+    `Dsh` 是包装（字符串进出、错误码 → 异常、**内核分配的内核释放**）。
+    两种类型都是 `internal` —— 这是刻意的：壳内部使用，不对外暴露
+    （见 AssemblyInfo.cs 里的 InternalsVisibleTo）。
+
+    ⚠️ `EnableDefaultCompileItems=false`：默认的"把目录下所有 .cs 都编进来"
+       会把 `obj/` 里自动生成的那些也算进去，而且以后往这个目录加文件时
+       **不该悄悄改变编译内容** —— 编译项显式列出来最安全。
+  -->
+  <PropertyGroup>
+    <AssemblyName>Lookup.Interop</AssemblyName>
+    <RootNamespace>Lookup.Interop</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 自动生成的文件：**不要手改**（改接口定义 → 重新生成） -->
+    <Compile Include="DshLookup.g.cs" />
+    <Compile Include="AssemblyInfo.cs" />
+  </ItemGroup>
+
+</Project>

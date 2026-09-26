@@ -1,0 +1,86 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Lookup.App —— **0.2.0 的壳**：真窗口 + WebView2。
+
+    它做的事只有三件（多一件都算把业务逻辑漏进视图层）：
+      · 开窗口、把 WebView2 摆进去；
+      · 把 WebView2 的两种事件翻给宿主适配层：
+          WebResourceRequested → VirtualHost.Serve（词典资源 `*.dictres.invalid`
+                                 与外壳自己的站点 `lookup.local`）
+          WebMessageReceived   → Dispatch.Handle（前端的唯一入口）
+      · 把 `lookup.local` 那个根目录（`web/`）告诉 ShellAssets。
+
+    ⚠️ 这里是**唯一**允许 `using Microsoft.Web.WebView2` 的地方。
+       `Lookup.Host` 一行 WebView 都不许有 —— 它要能被不开窗口的端到端验收直接驱动
+       （见 Lookup.Host.csproj 顶上那段），也是将来 WKWebView / Android 那几版的模板。
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>Lookup.App</AssemblyName>
+    <RootNamespace>Lookup.App</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!--
+      **DPI 感知声明**（PerMonitorV2）：见 app.manifest 顶上那段。
+      没有它，进程被判为 DPI 不感知 → Windows 把整块窗口按位图放大 → 缩放屏上全糊，
+      而且本版几何要用的真实 DPI 被虚拟化成 96（圆角 / 投影 / 吸边的比例跟着错）。
+      ⚠️ 挂的是**文件**，不是 `<Compile>` 项 —— 本工程 `EnableDefaultCompileItems=false` 只影响 .cs，
+         所以这一条不新增任何 `.cs`（参考实现的 `Lookup.csproj` 同样是这一行）。
+    -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!--
+      **exe 的图标** —— 与参考实现同一份 `assets/app.ico`。
+      参考实现的 `Lookup.csproj` 也是这一行；之前 0.2.0 漏了它，exe 用的是 .NET 的默认图标。
+    -->
+    <ApplicationIcon>assets\app.ico</ApplicationIcon>
+    <!--
+      自检模式（`selfcheck` 那个开关）要往控制台写实测结果 —— WinExe 默认没有控制台，
+      所以自检那条路自己 `AttachConsole(ATTACH_PARENT_PROCESS)`（见 Program.cs）。
+      不用 `OutputType=Exe` 的原因：那会让**正常启动也弹一个黑框**。
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="AppPaths.cs" />
+    <Compile Include="Report.cs" />
+    <Compile Include="WebViewBridge.cs" />
+    <Compile Include="WebViewSetup.cs" />
+    <Compile Include="ManagerWindow.cs" />
+    <Compile Include="TrayMenuWindow.cs" />
+    <Compile Include="TrayIcon.cs" />
+    <Compile Include="OutsideClickHook.cs" />
+    <Compile Include="Startup.cs" />
+    <Compile Include="ChromeWindow.cs" />
+    <Compile Include="Native.cs" />
+    <Compile Include="FloatingLayout.cs" />
+    <Compile Include="FloatingWindow.cs" />
+    <Compile Include="SelfCheck.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      **图标资产**：托盘用 `tray.png`、应用图标用 `app.ico`（`TrayIcon.cs` 按 `LogicalName` 读它们）。
+      `LogicalName` 的约定与参考实现的 `Lookup.csproj` 一致（`assets/%(Filename)%(Extension)`）——
+      名字里**不带目录层级**，所以 `assets/` 下不要再套子目录。
+      ⚠️ 本工程 `EnableDefaultCompileItems=false` 只管 `.cs`；`.resx` 之外的文件**不会**被自动嵌，
+      所以这几行必须显式写出来（0.2.0 之前就是漏了这一段，托盘图标才退成系统图标）。
+    -->
+    <EmbeddedResource Include="assets\**\*" LogicalName="assets/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      唯一的第三方依赖，而且只在**壳**这一层（内核那一侧是零依赖的纯 C11）。
+      版本写死成 NuGet 缓存里已有的那一份：这台机器要能**离线**构建。
+    -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lookup.Host\Lookup.Host.csproj" />
+    <ProjectReference Include="..\Lookup.Interop\Lookup.Interop.csproj" />
+  </ItemGroup>
+
+</Project>
