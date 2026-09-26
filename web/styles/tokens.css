@@ -1,0 +1,184 @@
+/* ==========================================================================
+   设计令牌：跟随系统深浅色，应用外壳用"玻璃卡片"，阅读区固定浅色纸张
+   （MDX 词条是为浅色背景排版的，强行反色会毁掉词典自带 CSS）
+   ========================================================================== */
+
+:root {
+  color-scheme: light dark;
+
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei",
+    system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --font-mono: "Cascadia Code", Consolas, "SFMono-Regular", ui-monospace, monospace;
+
+  /* 外壳。
+     WebView2 版窗口没有逐像素透明（见 docs 里的说明），所以外壳必须是**不透明**的：
+     rgba 会跟 WebView2 的默认底色混出脏边，而混不到桌面。
+     投影同理 —— 画在窗口外的那部分会被窗口 Region 直接裁掉，索性不再画。 */
+  --shell-bg: #ffffff;
+  --shell-bg-sub: #f7f8fc;
+  --shell-border: rgba(15, 20, 40, 0.1);
+  --shell-border-strong: rgba(15, 20, 40, 0.16);
+  --shell-highlight: rgba(255, 255, 255, 0.7);
+  --shell-shadow: none;
+  /* 窗口四周不再需要投影留白 */
+  --shadow: 0px;
+
+  /* 文字 */
+  --text: #12151f;
+  --text-dim: #5c6478;
+  --text-faint: #8b93a7;
+  --text-invert: #ffffff;
+
+  /* 强调色 */
+  --accent: #3b6ef6;
+  --accent-hover: #3263e8;
+  --accent-soft: rgba(59, 110, 246, 0.12);
+  --accent-ring: rgba(59, 110, 246, 0.32);
+
+  /* 状态色 */
+  --danger: #d9483f;
+  --danger-soft: rgba(217, 72, 63, 0.12);
+  --warn: #b4690e;
+  --warn-soft: rgba(180, 105, 14, 0.12);
+  /*
+   * 成功色（绿）。
+   * 这一套原本只有"强调蓝 / 危险红 / 提醒橙"三种，而"保存通过"这类**做成了**的话
+   * 要**绿字**（见「选项 → 语音」的 `#doubaoApplyResult`）——
+   * 拿强调蓝去顶会让它看起来像一条链接、而不是"成了"。
+   */
+  --success: #1f7a3d;
+  --success-soft: rgba(31, 122, 61, 0.12);
+
+  /* 交互层 */
+  --hover: rgba(15, 20, 40, 0.055);
+  --active: rgba(15, 20, 40, 0.1);
+  --divider: rgba(15, 20, 40, 0.08);
+
+  /* 形状 */
+  --radius-pill: 26px;
+  --radius-card: 18px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+  --gap: 8px;
+
+  /* 阅读区始终是浅色纸张 */
+  --paper: #ffffff;
+  --paper-edge: rgba(15, 20, 40, 0.08);
+
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --dur-fast: 120ms;
+  --dur: 190ms;
+  /* 右键菜单/浮层弹出的时长。
+     比 --dur-fast 稍慢一点：菜单是"从别处冒出来"的东西，
+     太快会显得生硬，180ms 左右能看出一个干净的滑入。 */
+  --dur-menu: 180ms;
+  /* 吸入/弹出屏幕边缘的动画时长，需与 main/windows/floating.ts 的 ABSORB_DURATION 一致 */
+  --dur-absorb: 190ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --shell-bg: #181a22;
+    --shell-bg-sub: #1e212b;
+    --shell-border: rgba(255, 255, 255, 0.1);
+    --shell-border-strong: rgba(255, 255, 255, 0.18);
+    --shell-highlight: rgba(255, 255, 255, 0.06);
+    --shell-shadow: none;
+
+    --text: #eef0f6;
+    --text-dim: #a3abbd;
+    --text-faint: #7b8398;
+
+    --accent: #6f9bff;
+    --accent-hover: #86adff;
+    --accent-soft: rgba(111, 155, 255, 0.18);
+    --accent-ring: rgba(111, 155, 255, 0.38);
+
+    --danger: #ff6b60;
+    --danger-soft: rgba(255, 107, 96, 0.16);
+    --warn: #e8a33d;
+    --warn-soft: rgba(232, 163, 61, 0.16);
+    --success: #4cc38a;
+    --success-soft: rgba(76, 195, 138, 0.16);
+
+    --hover: rgba(255, 255, 255, 0.07);
+    --active: rgba(255, 255, 255, 0.12);
+    --divider: rgba(255, 255, 255, 0.09);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/*
+ * 作者样式里的 `display` 会盖掉 UA 对 [hidden] 的 display:none，
+ * 这里统一兜底 —— 否则像 .empty-hint{display:flex} 这种元素即使设了 hidden 也会继续占位。
+ */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: transparent;
+  font-family: var(--font-ui);
+  color: var(--text);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  outline: none;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(120, 130, 155, 0.35);
+  border: 3px solid transparent;
+  border-radius: 8px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 130, 155, 0.6);
+  background-clip: padding-box;
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  display: block;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

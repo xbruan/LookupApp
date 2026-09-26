@@ -1,0 +1,23 @@
+﻿# 构建产物与中间物
+build/
+dist/
+.toolchain/
+native/build/
+*/bin/
+*/obj/
+tools/*/bin/
+tools/*/obj/
+
+# 前端（esbuild 产物 + 依赖，`node web/build.mjs` 重新生成）
+web/dist/
+web/node_modules/
+
+# 每道检查的原始输出（跑门时写这里，不进版本库）
+logs/
+
+# 编辑器 / 系统
+*.user
+.vs/
+.vscode/
+Thumbs.db
+desktop.ini

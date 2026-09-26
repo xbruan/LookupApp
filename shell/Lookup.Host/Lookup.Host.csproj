@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Lookup.Host —— **宿主适配层**：内核与各平台 WebView 之间的那一层。
+
+    现在的成员：
+      · VirtualHost.cs   虚拟资源主机（`https://<词典 id>.dictres.invalid/…` → 内核；
+                         另加 `https://lookup.local/__speech__/<键>` 发合成的语音）
+      · Dispatch.cs      桥上的方法分发（所有业务判断都在内核，这里只转发）
+      · Speech.cs        **系统离线语音**（`System.Speech` / SAPI）+ 合成结果的暂存
+
+    它**只依赖 Lookup.Interop**（生成的绑定），不依赖任何 WebView ——
+    所以它能被端到端验收直接驱动，不必开窗口；将来 WebView2 / WKWebView /
+    Android 各写十几行把请求与应答翻译过去即可（见 VirtualHost.cs 顶上那段）。
+
+    ⚠️ 这个工程里**剩下这一处平台事实**（不是业务规则，见硬规则①的"平台适配层做薄"）：
+       `Speech.cs` 的 `System.Speech`（.NET Framework 独有，所以 TargetFramework 必须是
+       net48）。换平台时替换的是这个文件，不是 Dispatch.cs —— 分发那一层不该跟着平台走。
+       （原来这里还有第二处：`Hotkey.cs` 的 Win32 位与虚拟键码。**2026-09 已定把全局
+       热键整条删掉**（「本APP不设置热键」），那个文件连同内核的 `hotkey` 设置节一起删了。）
+  -->
+  <PropertyGroup>
+    <AssemblyName>Lookup.Host</AssemblyName>
+    <RootNamespace>Lookup.Host</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="VirtualHost.cs" />
+    <Compile Include="ShellAssets.cs" />
+    <Compile Include="Dispatch.cs" />
+    <Compile Include="DeferredReply.cs" />
+    <Compile Include="OriginMap.cs" />
+    <Compile Include="ShellBridge.cs" />
+    <Compile Include="Speech.cs" />
+    <Compile Include="SpeechStatus.cs" />
+    <Compile Include="TranslateHttp.cs" />
+    <Compile Include="TranslateDocs.cs" />
+    <Compile Include="AssemblyInfo.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lookup.Interop\Lookup.Interop.csproj" />
+  </ItemGroup>
+
+  <!-- 系统离线语音（SAPI 的托管封装）。框架程序集，net48 自带，不用装包。 -->
+  <ItemGroup>
+    <Reference Include="System.Speech" />
+  </ItemGroup>
+
+</Project>

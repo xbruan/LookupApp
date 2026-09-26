@@ -1,0 +1,41 @@
+<Project>
+
+  <!--
+    壳（`0.2.0/shell/`）公共工程属性。
+
+    约定与参考实现的 `Lookup.csproj` 一致：**net48**（与主程序同一个目标框架，
+    这样测出来的行为就是主程序里的行为）、x64、语言版本 latest。
+
+    ⚠️ `Microsoft.NETFramework.ReferenceAssemblies` 是必需的一条：
+       这台机器上没装 Visual Studio / .NET Framework 的 targeting pack，
+       少了它 `dotnet build` 会说找不到 `System.Runtime.InteropServices` 这些。
+       它是 **PrivateAssets=all**（只用于编译，不进产物依赖）。
+
+    产物依赖只有 `KERNEL32.dll` 与 `msvcrt.dll`（那是 C 内核那侧的事），
+    托管侧零第三方依赖 —— 唯一的外部包是 WebView2（只在窗口那个工程里用到）。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+    <NoWarn>$(NoWarn);CS0649</NoWarn>
+    <!--
+      ⚠️ **不要**在这里改 `BaseOutputPath` / `BaseIntermediateOutputPath`。
+      第一版想把产物统一收到 `shell/bin`、`shell/obj`，结果两个工程**共用同一个
+      `obj/`** —— 于是 NuGet 还原出来的 `project.assets.json` 互相覆盖，
+      `Lookup.Host` 报的是 `MSB3644: 找不到 .NETFramework,Version=v4.8 的引用程序集`
+      （听起来像"没装开发包"，其实是**还原产物被隔壁工程踩了**）。
+      `obj/` 必须每个工程一份：它就是那个工程的还原与中间产物目录。
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

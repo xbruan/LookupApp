@@ -1,0 +1,57 @@
+/* ==========================================================================
+   自绘托盘菜单
+   主进程会按内容的自然尺寸裁窗口，这里只负责排版
+   ========================================================================== */
+
+body {
+  background: transparent;
+}
+
+/* WebView2 版没有逐像素透明，窗口按内容尺寸裁到刚好，
+   所以不再需要四周的投影留白（位置由主进程按光标锚点决定） */
+.tray-menu-shell {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+}
+
+/*
+ * 选择器故意写成两段：打包后 Vite 会重排 <link> 顺序（实测 tray-menu.css 被排到了
+ * floating.css 前面），单类名 .tray-menu 会被后面的 .context-menu{position:fixed} 压掉，
+ * 菜单就跑到视口 (0,0)，shell 的投影留白全部失效（投影在左上被切、右下多出空白）。
+ * 提高一级特异性后，跟打包顺序无关，始终按这里的定位排。
+ */
+.context-menu.tray-menu {
+  /* 位置由 shell 的 padding 决定，不再用 fixed 定位 */
+  position: relative;
+  left: 0;
+  top: 0;
+  /*
+   * 和悬浮窗里的右键菜单同一个弹出动画。
+   * 这里只做淡入 + 下滑（不用 scale），因为主进程是按 getBoundingClientRect()
+   * 量尺寸来裁窗口的，缩放会让量出来的尺寸比实际小一圈。
+   */
+  animation: menu-in var(--dur-menu) var(--ease);
+  box-shadow: var(--shell-shadow);
+}
+
+.tray-menu .menu-item {
+  height: 30px;
+}
+
+/* 勾选状态用自家的小方块，避免系统菜单那种额外留白 */
+.menu-check {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  border: 1.5px solid var(--shell-border-strong);
+  color: transparent;
+}
+.menu-item[data-checked='true'] .menu-check {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}

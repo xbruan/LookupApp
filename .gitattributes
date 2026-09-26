@@ -1,0 +1,9 @@
+# 全仓库统一 **LF**（这个项目对行尾敏感：`.sh` 带 CRLF 在 WSL 里不认，
+# 二进制/冻结资产也要求逐字节稳定）。GitHub 上看到的与克隆下来的字节就是这一份。
+* text=auto eol=lf
+
+# 二进制：不做任何行尾转换
+*.png binary
+*.ico binary
+*.mdx binary
+*.mdd binary
