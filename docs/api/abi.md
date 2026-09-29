@@ -1,4 +1,4 @@
-# 内核接口定义（ABI v2 · dsh_lookup 0.2.0）
+# 内核接口定义（ABI v2 · dsh_lookup 0.2.1）
 
 > 本文件由 `tools/gen-bindings.mjs` 从 [`abi/lookup.abi.json`](../../abi/lookup.abi.json) 生成。**不要手改。**
 
@@ -111,13 +111,13 @@
 
 ### `dsh_audio_source`
 
-三层音源。排序由内核定（原录音 → 系统语音 → 在线），界面不许自己排。
+三层音源。**这三个值只是音源的标识**：0 / 1 / 2 是取值编号，**取值顺序（词典 → 系统 → 在线）不是优先级顺序**。优先级由内核定（产品约定）：**词典自带原录音 → 在线 → 系统离线**，界面不许自己排、也不许自己判（见 dsh_speech_plan 那条）。
 
 | 取值 | 值 | 说明 |
 | --- | --- | --- |
 | `DSH_AUDIO_DICT` | 0 | 词典自带原录音（.mdd） |
 | `DSH_AUDIO_SYSTEM` | 1 | 系统语音（离线合成） |
-| `DSH_AUDIO_ONLINE` | 2 | 在线发音（默认关） |
+| `DSH_AUDIO_ONLINE` | 2 | 在线发音（豆包 · 单向流式；要自备凭据 —— 没填 Key 就用不上，没有单独的开关） |
 
 ## 接口
 
@@ -375,7 +375,7 @@ enum dsh_error dsh_engine_lookup(dsh_engine *engine, const char *text, enum dsh_
 | `text` | `utf8` | 入 | 要查的文字；NULL/空则改看 selection 的现值 |
 | `origin` | `dsh_origin` | 入 | 从哪条入口来 |
 | `dict_id` | `utf8` | 入 | 起点那本；NULL/空 = 当前词典 |
-| `out_json` | `json` | 出 | EntryPayload 形状：{query,keyText,dictId,dictTitle,entryUrl,plainText,found,sameAsShown,linkedTo,via,unconfirmed[],reason,translateWhy,offerTranslate,offerRecheck,chips[],suggestions[],speakText,stage,surface}。`sameAsShown` 是**「落点就是界面正在显示的那条词条」**（只对 `origin = selection` / `link` 有意义，见 `docs/查词兜底通道与历史记录开发指导.md`  C 第 2 条）：为真时 `entryUrl` **是空的**（没有要跳的地方）而 `reason` 是内核那句「「X」就是当前词条（Y）」—— 界面见它**一个字都不动正文**。检查标准是**解析之后的落点**与引擎记着的「上次交出去的那条」比（不是拿输入的文字比：`apples` 会重定向到 `apple`，字面上并不相等却是同一条）。chips[] 是**终态页那排出路按钮**（{action,label,hint,word}）—— 连按钮上那行字一起给，界面一个字都不拼。⚠️ **没命中（found:false）时 keyText 是查询词本身、entryUrl 指向那一本的提示页**（参考实现同约定）：提示页上那句「未在《…》中找到「…」」后面跟着的候选是可点的 entry:// 链接，那是全程序里 entry:// 链接唯一的来源。⚠️ `speakText` 是**这次朗读该念什么**（词典命中的那个词 / 查不到时是查询词 / 译文伪词条是译文 / **「没打完的半个词」那一档是 null**）—— 界面把它原样交给 `dsh_speech_plan`，**不许自己拼「keyText 否则 query」**（那是业务规则，参考实现里那几行已按硬规则 1 搬进内核）。 |
+| `out_json` | `json` | 出 | EntryPayload 形状：{query,keyText,dictId,dictTitle,entryUrl,plainText,found,sameAsShown,linkedTo,via,unconfirmed[],reason,translateWhy,offerTranslate,offerRecheck,chips[],suggestions[],speakText,stage,surface}。`sameAsShown` 是**「落点就是界面正在显示的那条词条」**（只对 `origin = selection` / `link` 有意义，见 `docs/design/查词兜底通道与历史记录开发指导.md` C 第 2 条）：为真时 `entryUrl` **是空的**（没有要跳的地方）而 `reason` 是内核那句「「X」就是当前词条（Y）」—— 界面见它**一个字都不动正文**。检查标准是**解析之后的落点**与引擎记着的「上次交出去的那条」比（不是拿输入的文字比：`apples` 会重定向到 `apple`，字面上并不相等却是同一条）。chips[] 是**终态页那排出路按钮**（{action,label,hint,word}）—— 连按钮上那行字一起给，界面一个字都不拼。⚠️ **没命中（found:false）时 keyText 是查询词本身、entryUrl 指向那一本的提示页**（参考实现同约定）：提示页上那句「未在《…》中找到「…」」后面跟着的候选是可点的 entry:// 链接，那是全程序里 entry:// 链接唯一的来源。⚠️ `speakText` 是**这次朗读该念什么**（词典命中的那个词 / 查不到时是查询词 / 译文伪词条是译文 / **「没打完的半个词」那一档是 null**）—— 界面把它原样交给 `dsh_speech_plan`，**不许自己拼「keyText 否则 query」**（那是业务规则，参考实现里那几行已按硬规则 1 搬进内核）。 |
 
 出参由内核分配，调用方用 `dsh_release()` 还给内核。 ABI v1 起可用。
 
@@ -607,7 +607,7 @@ enum dsh_error dsh_speech_dict_samples(dsh_engine *engine, const char *dict_id, 
 
 #### `dsh_speech_online_plan`
 
-在线语音（豆包 · 单向流式 HTTP）的**第一步：内核说该发什么**。三层音源里在线那一层的判断全在这儿：有没有配凭据与音色、这次该用哪个音色（**中英混排必须走中文音色** —— 实测拿英文音色念混排会得到空句子）、模型版本与音色配不配套（`seed-tts-2.0` / `seed-tts-1.0`）、请求体长什么样、四个头是什么。⚠️ 请求体里**刻意不写 `explicit_language`**：它的语义是"只念这个语种"，而词典正文中英混排是常态（见 docs/豆包语音合成接入方案.md 与 的实测）。⚠️ ok=false 时 reason 是人话，三种原因分开说（没填 Key / 没配音色 / 文本是空的）。
+在线语音（豆包 · 单向流式 HTTP）的**第一步：内核说该发什么**。三层音源里在线那一层的判断全在这儿：有没有配凭据与音色、这次该用哪个音色（**中英混排必须走中文音色** —— 实测拿英文音色念混排会得到空句子）、模型版本与音色配不配套（`seed-tts-2.0` / `seed-tts-1.0`）、请求体长什么样、四个头是什么。⚠️ 请求体里**刻意不写 `explicit_language`**：它的语义是"只念这个语种"，而词典正文中英混排是常态（见 docs/design/豆包语音合成接入方案.md §6.1 的实测）。⚠️ ok=false 时 reason 是人话，三种原因分开说（没填 Key / 没配音色 / 文本是空的）。
 
 ```c
 enum dsh_error dsh_speech_online_plan(dsh_engine *engine, const char *text, const char *dict_id, const char *overrides_json, char **out_json);

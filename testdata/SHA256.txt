@@ -1,0 +1,35 @@
+﻿# 冻结测试用词典清单（由 tools/freeze-fixtures.ps1 生成）
+# 来源：0.1.3 参考实现里的 testdata/ 与 tools/MdxProbe/variants/ —— 已逐字节冻结进本仓库，
+#       不再读任何兄弟目录（校验：pwsh -File tools/freeze-fixtures.ps1）
+# 生成时间：2026-09-24 13:55:08
+# 追加：2026-09-29 把格式矩阵样本（13 个 .mdx）收进 testdata/variants/ —— 见下面的「变体」一段
+
+06f401db6bbc5d3fc053e916696c87fa190d470918b36bbc9e6c9c27560fc931  test.mdx
+600d35bfd3199feb73c08e33cb3b5efd1f7f1cf82d2899eca578fc132dd8b0ea  test.mdd
+2b80daecb554c5fcf8b4c454a6d3ab9c156c0a40f75daa790a40cefa9ee7e7ee  big.mdx
+414a772f593a633682d662accfce27f0ff5d96482470811c55a0ec68eeadde8e  tall.mdx
+539a599f3d30819489d19024504647d0c6874a692c97b3539a294a37c195672b  link.mdx
+6129ab21babef58ea0b4a77b489e45e2137a8e808547dd6421be70dc42202e9f  titled.mdx
+990ff28c59b8c039cc06afaebec16055ea2ebbe5f99f66acae47ed8362e14cfe  kana.mdx
+bf7d0180a7436db6b8a6e6292932ce1d6f35e998ab844c9ff980e3e6bfd97178  audio.mdx
+f7bf72ba9fbf8f3396419e6c2a3e3846bd1b59546cd9a013b7a15c851e986cb9  audio.mdd
+50b866a37a939998b2b6700df9785ca2fdd685938e1ba1fe20bd656dfd88ef24  v2-multiblock.mdx
+
+# ── 变体：格式矩阵样本（版本 × 压缩 × 编码 × 加密 × 索引形态）──────────────
+# variant 目录里 13 个文件**全都在**，而标准答案文件对照测试只用其中的 12 个 ——
+# 多标一个 v2-multiblock.mdx（它在上面已按 testdata/v2-multiblock.mdx 进过清单）：
+# 清单按**路径**记，同一份字节两个存放点就记两行，这是实情，不是重复。
+
+5e400833a76322b7107ea5bcf4e02690459fc58022266e66dc9f954dd4e04543  variants/v12-lzo.mdx
+40ea13ef944a57baf386929c8fd66bb648ae742b88acb4b8b6572c3ecc21aa2a  variants/v12-zlib.mdx
+69b36ba586d3ad97a58bf3d2f2c908842b4af332cc93b42b0e44befb20df024b  variants/v2-big5.mdx
+f637b070447305d61337caa5038f5cd859a40e37fa1478fee64d0432b224f245  variants/v2-enc1.mdx
+68a16b72c0431f9b03f4e34d773855812369d53a76bd4f43b02dc939252b6099  variants/v2-enc2.mdx
+4f87cc3373dc3a5ad18b9a33ed4fd157286a027a62c89b50951df9247c686bb9  variants/v2-gbk.mdx
+76d22cc780bbe66b64ef7d2cc16f7b4f976595d1d2d3c15ec2c7dd25bb8d6519  variants/v2-lzo-record-zlib-key.mdx
+fe6bd82bf780b3c44b21eb76d9d1c0ed970cafc9675f7156175263125fdc137f  variants/v2-lzo.mdx
+50b866a37a939998b2b6700df9785ca2fdd685938e1ba1fe20bd656dfd88ef24  variants/v2-multiblock.mdx
+946c667e8afc5f391024342cc625db2f86ffe18510790185240ce554f2aab5bb  variants/v2-none.mdx
+69147abc430bbb4e139af7db2746c16803ab14c3080070b69199e84225ca76e9  variants/v2-normalized-index.mdx
+baed49a5af03614684b4f4b338d185cf9f87bab55023f1df46f6a99d2018b6e5  variants/v2-utf16.mdx
+b5193c54b7474980371c387a4ad132e4a3eb9c8f7fced7b2c62c44aaeec144d5  variants/v2-zlib.mdx

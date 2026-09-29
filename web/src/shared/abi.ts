@@ -5,7 +5,7 @@
 // ==========================================================================
 
 export const DSH_ABI_VERSION = 2
-export const DSH_VERSION = '0.2.0'
+export const DSH_VERSION = '0.2.1'
 
 /** C 侧的错误码（内核返回值）。0 = 成功。 */
 export const DshError = {
@@ -67,7 +67,7 @@ export type DshScript =
 export type DshAudioSource =
   | 'dict' // 词典自带原录音（.mdd）
   | 'system' // 系统语音（离线合成）
-  | 'online' // 在线发音（默认关）
+  | 'online' // 在线发音（豆包 · 单向流式；要自备凭据 —— 没填 Key 就用不上，没有单独的开关）
 
 /** 内核常量。UI 与工具一律读这里，禁止再抄字面量。 */
 export const DshConstants = {
@@ -99,7 +99,7 @@ export const DSH_SEPARATOR_CODEPOINTS: readonly number[] = [
   0x02cc, // ˌ U+02CC MODIFIER LETTER LOW VERTICAL LINE（次重音）：同 U+02C8 一条约定，两个一起加（只加一个等于留一半的坑）
 ]
 
-/** 接口定义里所有接口的名字（诊断用：确保诊断问的接口真的存在）。 */
+/** 接口定义里所有接口的名字（诊断脚本用：确保诊断脚本问的接口真的存在）。 */
 export const DSH_FUNCTIONS = [
   'dsh_version',
   'dsh_abi_version',

@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    GoldenDump：把 **0.1.3 的参考实现（C# 解析器）** 对一本 .mdx 的全部输出
+    规范化成 JSON 吐出来 —— 用来给 C 内核做标准答案文件对照测试。
+
+    ⚠️ 故意**不放在 native/** 下：它不是内核的一部分，只是对照测试工具。
+       内核自己的测试（`make test`）不该依赖 .NET，见 native/README.md 的分级说明。
+
+    与 0.1.3 的 tools/MdxProbe/MdxProbe.csproj 同一个模式：
+      · 目标框架 net48（与主程序一致，测出来的就是主程序里的行为）；
+      · 把 **仓库内**的参考实现 reference/0.1.3-parser/src/Dictionary/*.cs
+        **直接链进来**，不复制源码、也不再读兄弟目录；
+      · 排除应用层文件（DictionaryEngine / DictionaryProbe）——
+        那些依赖主程序的 Models/Newtonsoft，而且这里只验解析器。
+
+    ⚠️ 参考实现那一份是**只读**的（reference/0.1.3-parser/README.md）：它一漂移，
+       基线就悄悄失效了。往那个目录下加新的应用层文件时，这里要跟着加一行 Remove；
+       忘了的症状是这个诊断脚本**编不过**（CS0246），不是悄悄少测。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>GoldenDump</AssemblyName>
+    <RootNamespace>Lookup.Tools.GoldenDump</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+    <NoWarn>$(NoWarn);CS0649</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="golden-dump.cs" />
+    <!-- 临时诊断诊断脚本（diag-*.cs）有自己的 Main，**不进这个工程** —— 它们用
+         GoldenDiag.csproj 单独编。诊断用完两个文件一起删。 -->
+    <Compile Remove="diag-*.cs" />
+    <!-- 参考实现的解析器：仓库内 reference/0.1.3-parser/ 那一份冻结副本（只读），不复制 -->
+    <Compile Include="../../reference/0.1.3-parser/src/Dictionary/*.cs" />
+    <Compile Remove="../../reference/0.1.3-parser/src/Dictionary/DictionaryEngine.cs" />
+    <Compile Remove="../../reference/0.1.3-parser/src/Dictionary/DictionaryProbe.cs" />
+  </ItemGroup>
+
+</Project>

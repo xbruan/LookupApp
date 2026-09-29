@@ -7,7 +7,7 @@
 #ifndef DSH_LOOKUP_H
 #define DSH_LOOKUP_H
 
-/* dsh_lookup ABI v2 · 内核版本 0.2.0 */
+/* dsh_lookup ABI v2 · 内核版本 0.2.1 */
 
 #include <stddef.h>
 #include <stdint.h>
@@ -17,7 +17,7 @@ extern "C" {
 #endif
 
 #define DSH_ABI_VERSION 2
-#define DSH_VERSION_STRING "0.2.0"
+#define DSH_VERSION_STRING "0.2.1"
 
 /* ── 内存与字符串约定 ─────────────────────────────────────────────────────
  * 内核返回的每一块内存都由内核分配；宿主一律用 dsh_release()
@@ -95,11 +95,17 @@ typedef enum dsh_script {
   DSH_SCRIPT_OTHER = 2
 } dsh_script;
 
-/* 三层音源。排序由内核定（原录音 → 系统语音 → 在线），界面不许自己排。 */
+/*
+ * 三层音源。**这三个值只是音源的标识**：0 / 1 / 2
+ * 是取值编号，**取值顺序（词典 → 系统 →
+ * 在线）不是优先级顺序**。优先级由内核定（产品约定）：**词典自带原录音 →
+ * 在线 → 系统离线**，界面不许自己排、也不许自己判（见 dsh_speech_plan
+ * 那条）。
+ */
 typedef enum dsh_audio_source {
   DSH_AUDIO_DICT = 0,                 /* 词典自带原录音（.mdd） */
   DSH_AUDIO_SYSTEM = 1,               /* 系统语音（离线合成） */
-  DSH_AUDIO_ONLINE = 2                /* 在线发音（默认关） */
+  DSH_AUDIO_ONLINE = 2                /* 在线发音（豆包 · 单向流式；要自备凭据 —— 没填 Key 就用不上，没有单独的开关） */
 } dsh_audio_source;
 
 /* ── 常量（凡是别的文件里也抄了一份的数，都在这里）───────────────────────── */
@@ -434,8 +440,8 @@ enum dsh_error dsh_speech_dict_samples(dsh_engine *engine, const char *dict_id, 
  * ——
  * 实测拿英文音色念混排会得到空句子）、模型版本与音色配不配套（`seed-tts-2.0`
  * / `seed-tts-1.0`）、请求体长什么样、四个头是什么。⚠️ 请求体里**刻意不写
- * `explicit_language`**：它的语义是"只念这个语种"，而词典正文中英混排是常态$1
- * docs/豆包语音合成接入方案.md 与 的实测）。⚠️ ok=false 时 reason
+ * `explicit_language`**：它的语义是"只念这个语种"，而词典正文中英混排是常态（见
+ * docs/design/豆包语音合成接入方案.md §6.1 的实测）。⚠️ ok=false 时 reason
  * 是人话，三种原因分开说（没填 Key / 没配音色 / 文本是空的）。
  * 出参由内核分配：调用方用 dsh_release() 还给内核。
  */
@@ -588,7 +594,7 @@ enum dsh_error dsh_translate_clear_cache(dsh_engine *engine, char **out_json);
  */
 enum dsh_error dsh_translate_payload(dsh_engine *engine, const char *translate_json, const char *entry_url, char **out_json);
 
-/* ── 解析层：单本 .mdx（工具与逐字节对照用，产品路径走引擎） ─────────────────────────────────────── */
+/* ── 解析层：单本 .mdx（工具与对照测试用，产品路径走引擎） ─────────────────────────────────────── */
 /*
  * 打开一本 .mdx（解析层，不经引擎）。探测 / 逐字节对照 /
  * 工具用得上；产品路径一律走引擎。

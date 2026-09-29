@@ -818,7 +818,7 @@ enum dsh_error dsh_speech_plan(dsh_engine *engine, const char *text, const char 
     } else if (strcmp(l->source, "online") == 0) {
       dsh_json_kv_str(j, "speaker", (l->speaker != NULL) ? l->speaker : "");
       dsh_json_kv_str(j, "language", language);
-      /* `loudness`：这一次用的响度补偿（覆盖优先，否则按设置/内置表算 ——$1
+      /* `loudness`：这一次用的响度补偿（覆盖优先；否则按设置/内置表算，见
        * `dsh_doubao_loudness_for`）。壳把同一串覆盖交给 `dsh_speech_online_plan`，
        * 不必读这个键；给出来只是让「这次带了多少响度」有据可查。 */
       dsh_json_kv_int(j, "loudness",

@@ -1,0 +1,225 @@
+# =============================================================================
+# CI —— 把"能自动判的那几道门"接起来。
+#
+# 设计原则（与 AGENTS.md §二 一致）：**按"这条测试需要什么才能判"分工**，
+# 别把不需要 Windows 的东西塞进 Windows runner，也别把需要真实桌面的东西塞进 CI。
+#
+#   ① kernel-linux   ← 内核是纯 C11、零系统依赖，所以 B 级 + 内存检查在 Linux 上跑
+#   ② static-checks  ← A / A′ 级：全部不启动程序、秒级
+#   ③ golden         ← C 级：跑当前的 C 实现 → 比**冻结基线**（不需要 .NET、不碰旧实现）
+#   ④ dll            ← 交叉编 Windows 内核 DLL（在 Linux 上编，runner 上装 mingw 即可）
+#   ⑤ windows        ← 真 DLL + 生成的绑定 + 宿主适配层（不需要窗口，能在 runner 上跑）
+#
+# ⚠️ **故意没接进来的**：`tools/test-shell-app.ps1`（真实窗口 → 页面 → 通信桥 → 内核，
+#    要一个**交互式桌面会话**与 WebView2 Runtime，CI runner 上不可靠）与所有**在线**路径
+#    （机器翻译 / 在线语音：要真凭据、要花钱）。那两类的入口在 AGENTS.md §三，**手动**跑。
+#    `test-shell-app.ps1` 由下面的 `shell-acceptance`（只能手动触发）试着跑，失败不算 CI 红。
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支上的旧运行自动取消 —— 免得排队等一堆已经过时的提交
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 生成器与前端脚本都读它；本仓库的产物必须是 LF + UTF-8 无 BOM
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  # ── ① 内核：编 + 接口自检 + 单元测试 + ASan/UBSan ─────────────────────────
+  kernel-linux:
+    name: 内核单测 + ASan/UBSan（B 级）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 环境一览（出问题时能对得上现场）
+        run: |
+          cc --version | head -1
+          make --version | head -1
+
+      - name: B 级 · 编内核 + 接口自检 + 全部单元测试
+        run: make -C native test
+
+      - name: B′ 级 · ASan + UBSan（**不许跳**）
+        run: make -C native asan
+
+  # ── ② A / A′ 级：不启动程序的那几道 ─────────────────────────────────────
+  static-checks:
+    name: 接口定义 / 界面结构 / 授权边界（A、A′ 级）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # 前端依赖只有 esbuild 一个包；`ui-static-check` 与 `check-entry-auth` 都要读 TS 源码
+      - name: 装前端依赖
+        run: npm ci --prefix web
+
+      # ⚠️ 这一条看着多余，其实**抓过真 bug**：`tools/probe-doubao.mjs` 里有一段**模板字符串**
+      #    装着要注入浏览器的整段脚本，谁往那段注释里加一对反引号，就会**提前终止模板字符串**、
+      #    把文件变成语法错误 —— 而"编辑注释"这件事在 code review 里最容易被当成无害的。
+      #    下面几道检查都只跑**自己那一个**脚本，所以一个坏掉的 probe 脚本能整片潜伏过去。
+      #    `node --check` 一秒跑完 16 个文件，便宜到没有理由不做。
+      - name: 语法检查 · tools/ 与 web/ 下的每个 .mjs 都能解析
+        run: |
+          fail=0
+          for f in $(find tools web -name '*.mjs' -not -path '*/node_modules/*' -not -path '*/dist/*' | sort); do
+            if node --check "$f"; then :; else echo "✗ 解析失败：$f"; fail=1; fi
+          done
+          [ "$fail" -eq 0 ] || exit 1
+          echo "✓ 全部 .mjs 都能解析"
+
+      # ⚠️ 这一条是**在 CI 上才第一次照出来**的那类问题的机械保证：Windows PowerShell 5.1
+      #    读没有 BOM 的 UTF-8 文件时按**机器 ANSI 代码页**解码。开发机的代码页正好是 UTF-8，
+      #    所以本地怎么跑都对；runner 上是 1252，中文注释变乱码、整个脚本语法错误
+      #    （实测：13 个 tools/*.ps1 全中，Windows 侧工具链一行都跑不了）。
+      - name: 编码 · .ps1 必须带 UTF-8 BOM（.sh / .json 不许带）
+        run: node tools/check-encoding.mjs
+
+      # shell 脚本与 python 也一样：它们不进任何编译，坏了只有真去跑那一刻才知道
+      - name: 语法检查 · tools/*.sh（sh -n）与 tools/**/*.py（ast）
+        run: |
+          rc=0
+          for f in tools/*.sh; do sh -n "$f" || { echo "✗ sh 语法错误：$f"; rc=1; }; done
+          python3 - <<'PY' || rc=1
+          import ast, pathlib, sys
+          bad = 0
+          for p in sorted(pathlib.Path('tools').rglob('*.py')):
+              try:
+                  ast.parse(p.read_text(encoding='utf-8-sig'), filename=str(p))
+              except SyntaxError as e:
+                  print('✗ python 语法错误：%s (第 %s 行: %s)' % (p, e.lineno, e.msg)); bad += 1
+          sys.exit(1 if bad else 0)
+          PY
+          exit $rc
+
+      - name: A 级 · 接口定义与四份产物一致
+        run: node tools/gen-bindings.mjs --check
+
+      - name: A 级 · 界面静态检查（页签 / 控件归属 / 桥方法名）
+        run: node tools/ui-static-check.mjs
+
+      - name: A′ 级 · 出路按钮的授权边界（词典脚本伪造不出翻译动作）
+        run: node tools/check-entry-auth.mjs
+
+      - name: 工作区指令预算（AGENTS.md 不许悄悄顶穿）
+        run: node tools/instruction-budget.mjs
+
+  # ── ③ C 级：与冻结基线逐字节对照 ────────────────────────────────────────
+  golden:
+    name: 格式矩阵对照测试（C 级）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 环境一览
+        run: |
+          cc --version | head -1
+          python3 --version
+
+      # 日常回归**只跑 C 侧 + 比冻结基线**：不构建旧实现、不需要 .NET。
+      # 重新生成基线是一条显式路径（见 tools/run-golden.sh 的说明），CI 里**绝不**走它 ——
+      # 标准答案不能由正在被测的实现产出。
+      - name: C 级 · 跑当前 C 实现 → 比冻结基线
+        run: sh tools/check-golden.sh "$PWD"
+
+  # ── ④ 交叉编 Windows 内核 DLL（在 Linux 上编最省事）─────────────────────
+  dll:
+    name: 交叉编 Windows DLL
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 用发行版提供的 mingw-w64：脚本会走它"PATH 里已有交叉 gcc"那条路
+      # （工具链本身的版本与装法见 native/README.md）
+      - name: 装 mingw-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: 工具链预检（报出用的是哪一套、什么版本、sysroot 在哪）
+        run: sh tools/build-windows-dll.sh --preflight "$PWD"
+
+      - name: 编 DLL + 核对导出表
+        run: sh tools/build-windows-dll.sh "$PWD" Release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh_lookup-dll
+          path: |
+            dist/win-x64/dsh_lookup.dll
+            dist/win-x64/dsh_lookup.lib
+            dist/win-x64/dsh_lookup.def
+          if-no-files-found: error
+
+  # ── ⑤ Windows：真 DLL + 真绑定 + 宿主适配层 ─────────────────────────────
+  windows:
+    name: 真 DLL + 绑定 + 宿主（D 级，无窗口）
+    needs: [dll]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dsh_lookup-dll
+          path: dist/win-x64
+
+      # ⚠️ 这一步不是"绕过防陈旧检查"，而是把它的前提摆正：`test-windows-dll.ps1` 比的
+      #    是"DLL 比内核源码新"，那是为了拦住**开发者本地拿着旧二进制验收**。
+      #    在 CI 里这份 DLL 就是**同一个提交**的源码刚编出来的，只是"制品下载"会把
+      #    修改时间带回打包那一刻。所以这里把它的时间戳对齐到"刚拿到"。
+      - name: 对齐 DLL 时间戳（同一提交刚编出来的，制品下载会把 mtime 变旧）
+        shell: pwsh
+        run: (Get-Item dist/win-x64/dsh_lookup.dll).LastWriteTime = Get-Date
+
+      - name: 打前端
+        run: |
+          npm ci --prefix web
+          node web/build.mjs
+
+      - name: 编壳
+        run: dotnet build shell/Lookup.App/Lookup.App.csproj -c Release
+
+      - name: D 级 · 真 DLL + 生成的绑定 + 宿主适配层
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/test-windows-dll.ps1
+
+  # ── 手动：真实窗口端到端（runner 上不可靠，所以不接进默认 CI）──────────────
+  shell-acceptance:
+    name: 真实窗口端到端（手动触发，允许失败）
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 说明
+        run: |
+          echo "这一节要一个**交互式桌面会话**与 WebView2 Runtime，GitHub runner 上不保证有。"
+          echo "它在这里跑是为了留一条可点的路径；真验收请在开发机上跑（见 AGENTS.md 三）。"
+        shell: bash
+      - name: 打前端 + 编壳
+        run: |
+          npm ci --prefix web
+          node web/build.mjs
+          dotnet build shell/Lookup.App/Lookup.App.csproj -c Release
+        shell: bash
+      - name: D 级 · 真实窗口 → 真实页面 → 通信桥 → 内核
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/test-shell-app.ps1

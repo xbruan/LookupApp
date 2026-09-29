@@ -2,7 +2,7 @@
 
 ## 术语表（本文用到的词）
 
-> 完整词表与"旧词 → 新词"对照见 [`../../../docs/glossary.md`](../../../docs/glossary.md)。
+> 完整词表与"旧词 → 新词"对照见 [`../../docs/design/术语表.md`](../../docs/design/术语表.md)。
 
 | 术语 | 一句话解释 | 在本项目里指什么 |
 | --- | --- | --- |
@@ -75,10 +75,10 @@ exe 不能带原生 DLL；**0.2.0 的内核本来就是 C**，这个约束不存
 
 ## 怎么编（两条路都要，各有一条检查标准）
 
-`
+```
 构建脚本             → VENDOR_SRCS / VENDOR_OBJS / VENDOR_CFLAGS + $(OBJ)/vendor/speex/%.o
 tools/build-windows-dll.sh  → 同一组参数（Release 也编一次）
-`
+```
 
 两条都要带 `-DHAVE_CONFIG_H`（否则当场红，见上表）与 `-include dsh_override.h`。
 Linux 侧链接还要 `-lm`（`stereo.c` / `vbr.c` 用 `log`/`pow`）—— 那不是第三方依赖，

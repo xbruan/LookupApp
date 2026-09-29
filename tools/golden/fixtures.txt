@@ -1,0 +1,63 @@
+# 标准答案文件对照测试的测试用词典清单 —— **两边共用的唯一来源**。
+#
+# tools/run-golden.sh（C 侧：跑当前 C 内核 + 与冻结基线比对）与
+# tools/make-golden.ps1 / tools/run-golden.sh --regen（C# 侧：**只在显式再生基线时**跑）
+# 都读这一份；比对由 tools/golden/compare-golden.py 做（逐字节 + 一张"已确认差异"白名单）。
+# 顺序必须一致：两边输出的 JSON 是按这个顺序拼的，
+# 顺序不同 → diff 全是噪声（比"内容不同"更容易误导人）。
+#
+# 路径写成相对**仓库根**的斜杠形式（C# 与 Linux 的 C 侧都能直接用；
+# Windows 的 .NET 也接受 / 分隔符）。以 # 开头的行与空行被忽略。
+# ⚠️ 这里的每一本都必须**在本仓库里**（testdata/）：清单曾经指向兄弟目录
+#    0.1.3/tools/MdxProbe/variants/，那让"这道 gate 能不能跑"取决于别人的目录 ——
+#    已按 code-review-2026-09-29.md 的建议全部冻结进来（见 testdata/variants/）。
+#
+# ── 覆盖的解析矩阵（这是这份清单存在的理由，别随手删条目）──────────────────
+#   版本        : v2.0（numWidth=8）/ v1.2（numWidth=4）
+#   压缩        : zlib / lzo / none
+#   文本编码    : UTF-8 / UTF-16LE / GBK / BIG5
+#   加密        : 无 / Encrypted=1（记录块）/ Encrypted=2（键信息块）
+#   索引形态    : 普通 / 归一化索引（LDOCE5 那种 bunnyboiler ← "bunny boiler"）
+#   结构        : 单词块 / 多词块 / 记录横跨记录块边界 / 重定向（@@@LINK）/ 书名与文件名不同
+
+# 本仓冻结的测试用词典（testdata/SHA256.txt 有逐字节清单）
+testdata/test.mdx
+testdata/link.mdx
+testdata/titled.mdx
+testdata/kana.mdx
+testdata/tall.mdx
+testdata/audio.mdx
+# ⚠️ **资源卷（.mdd）也要进这张表** —— 第十二轮的教训（见 开发记录-0.2.0.md §12.3）：
+#    内核此前**根本读不了任何 .mdd**（`read_key_infos` 里一句双重释放把词块索引写坏了），
+#    而它潜伏了 11 轮的原因是"**这份清单里一本 .mdd 都没有**" ——
+#    `test.mdd` / `audio.mdd` 一直躺在 testdata/ 里，从来没人打开过。
+#    一句话：**没被对照测试过的格式等于没支持**。
+testdata/test.mdd
+testdata/audio.mdd
+# 多块词典：**唯一**覆盖"记录横跨记录块边界"的测试用词典（0.1.3 的变体，已冻结进 testdata/）。
+# ⚠️ 它在对照测试里会**稳定地报一处已知差异**，责任在参考实现 —— 见
+#    tools/golden/compare-golden.py 顶部的 WHITELIST（那两处只有 C 侧是完整的）。
+testdata/v2-multiblock.mdx
+
+# 0.1.3 的变体（覆盖上面那张矩阵）—— 已逐字节冻结进 testdata/variants/，
+# 标准答案文件与之比对时不再读任何兄弟目录。
+testdata/variants/v12-lzo.mdx
+testdata/variants/v12-zlib.mdx
+testdata/variants/v2-none.mdx
+testdata/variants/v2-zlib.mdx
+testdata/variants/v2-lzo.mdx
+testdata/variants/v2-lzo-record-zlib-key.mdx
+testdata/variants/v2-utf16.mdx
+testdata/variants/v2-gbk.mdx
+testdata/variants/v2-big5.mdx
+testdata/variants/v2-enc1.mdx
+testdata/variants/v2-enc2.mdx
+# ⚠️ v2-multiblock.mdx **故意不在这张变体表里** —— 它已经冻结进 testdata/（见上面）。
+#    两边都列就会出现同一本测试用词典两次、同一处已知差异报两遍（这一版报过）。
+#    （testdata/variants/ 目录里**有**它那份字节相同的副本：变体目录求"完整"，
+#      而这张清单求"同一本只出现一次" —— 两者不是一回事。）
+testdata/variants/v2-normalized-index.mdx
+
+# ⚠️ 刻意**不含 big.mdx**：20 万条词条 → 标准答案文件 100 MB，进版本库没意义。
+#    它的覆盖是"规模"而不是"格式矩阵"，规模那一半由
+#    native/tests/test_mdx.c（20 万键枚举 + 首/中/末取样）盯着。

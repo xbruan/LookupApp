@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WindowsDllTest —— **D 级验收**：用真 DLL + **生成的绑定** + **宿主适配层**
+    走一遍真实解析与查词。
+
+    为什么它现在是一个工程（原来是 PowerShell 把源码拼起来 Add-Type）：
+      · `Add-Type` 那条路要 PowerShell 去拼 C# 源码 —— 而 PowerShell 5.1 的
+        here-string / 变量展开会先解释一遍代码（这一版为此改坏过两次）；
+      · 工程化之后 `dotnet build` 会给出正常的编译错误行号；
+      · 而且它现在**引用真的工程**（Lookup.Interop / Lookup.Host），
+        与壳将来引用的完全一致 —— 不是"另拼一份差不多的"。
+
+    产出目标：net48 的 exe，用法 `WindowsDllTest <testdata 目录> <临时配置目录>`。
+    `dsh_lookup.dll` 由 tools/test-windows-dll.ps1 放到 exe 旁边（壳也是这么发布的：
+    DLL 与 exe 同目录，`DllImport("dsh_lookup.dll")` 才找得到）。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!--
+      ⚠️ 目标框架等属性要**在这里写一遍**：这个工程在 `tools/` 下，
+      而 `shell/Directory.Build.props` 只对它自己那棵子树生效。
+      第一版漏了这几行，`dotnet build` 报的是 `NETSDK1013: 未识别 TargetFramework 值""`
+      —— 那句话听起来像拼错了框架名，其实是"根本没有这一项"。
+    -->
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+    <NoWarn>$(NoWarn);CS0649</NoWarn>
+    <AssemblyName>WindowsDllTest</AssemblyName>
+    <RootNamespace>Lookup.Interop.TestHarness</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Runner.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\shell\Lookup.Interop\Lookup.Interop.csproj" />
+    <ProjectReference Include="..\..\shell\Lookup.Host\Lookup.Host.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!--
+    验收要**自己问一遍**本机装了哪些离线音色（不复用壳那份探测）——
+    否则"壳真的把本机那份表递进去了吗"就成了拿实现验实现。
+  -->
+  <ItemGroup>
+    <Reference Include="System.Speech" />
+  </ItemGroup>
+
+</Project>

@@ -96,14 +96,14 @@ namespace Lookup.Interop
         Other = 2,
     }
 
-    /// <summary>三层音源。排序由内核定（原录音 → 系统语音 → 在线），界面不许自己排。</summary>
+    /// <summary>三层音源。**这三个值只是音源的标识**：0 / 1 / 2 是取值编号，**取值顺序（词典 → 系统 → 在线）不是优先级顺序**。优先级由内核定（产品约定）：**词典自带原录音 → 在线 → 系统离线**，界面不许自己排、也不许自己判（见 dsh_speech_plan 那条）。</summary>
     internal enum DshAudioSource
     {
         /// <summary>词典自带原录音（.mdd）</summary>
         Dict = 0,
         /// <summary>系统语音（离线合成）</summary>
         System = 1,
-        /// <summary>在线发音（默认关）</summary>
+        /// <summary>在线发音（豆包 · 单向流式；要自备凭据 —— 没填 Key 就用不上，没有单独的开关）</summary>
         Online = 2,
     }
 
@@ -202,7 +202,7 @@ namespace Lookup.Interop
         /// <summary>从一本词典里挑几条**真的有录音**的词条（参考实现的 `App.DictSamplesAsync`）。⚙ 挑法逐条照参考实现：① **均匀撒网** —— 按**整本书的词条序号**分若干段、每段取开头那一条（⚠️ 单位是**词条**不是**词块**：按块取的话，一本只有 1 块的词典只能给出 1 个候选 —— 真词典 正是 1 块 9 条，实测踩过）；② 不够 6 条时**按索引顺序兜底补扫**（均匀撒点是一张网，网眼之间可能正好漏掉『录音集中在某一段』的词典）；③ 每条都**真解词条正文**去找录音，而且**只认词目发音**（例句不算 —— 量的是『点发音按钮会听到的那一段』，所以挑法与真正发音时完全一致：同一个 `dsh_speech_dict_audio`）；④ 三个上限：6 条 / 最多扫 60 个候选 / **最多 400 ms**（一次『解词条正文 + 到 .mdd 里找文件』实测十几毫秒，无上限地扫就是拿调用方的一次点击去跑后台任务）。⚠️ `ok=false` 时 message 是**三档不同的人话**：一本词典都没有 / 这本词典没有资源卷（.mdd）/ 有资源卷却扫不到（多半是音频卷没关联上）；扫不满 6 条但有一条以上时 `ok=true` 且 message 说清『只找到 N 条』。⚠️ 返回的是 **`audioKey`**（`.mdd` 里的键名），**可播地址由外壳拼**（`https://<外壳域>/__sound__/<词典 id>/<键名>`）—— 地址是平台形状，与 `dsh_speech_plan` 的 dict 那一层同一条规矩。⚠️ 今天**没有产品流程调它**（界面上的「平衡音量」按按需求删掉了，参考实现亦然）：接口、外壳接线与 B/标准都留着备用，**别看到『没人调』就删**。</summary>
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, SetLastError = false)]
         internal static extern int dsh_speech_dict_samples(IntPtr engine, IntPtr dict_id, out IntPtr out_json);
-        /// <summary>在线语音（豆包 · 单向流式 HTTP）的**第一步：内核说该发什么**。三层音源里在线那一层的判断全在这儿：有没有配凭据与音色、这次该用哪个音色（**中英混排必须走中文音色** —— 实测拿英文音色念混排会得到空句子）、模型版本与音色配不配套（`seed-tts-2.0` / `seed-tts-1.0`）、请求体长什么样、四个头是什么。⚠️ 请求体里**刻意不写 `explicit_language`**：它的语义是"只念这个语种"，而词典正文中英混排是常态（见 docs/豆包语音合成接入方案.md 与 的实测）。⚠️ ok=false 时 reason 是人话，三种原因分开说（没填 Key / 没配音色 / 文本是空的）。</summary>
+        /// <summary>在线语音（豆包 · 单向流式 HTTP）的**第一步：内核说该发什么**。三层音源里在线那一层的判断全在这儿：有没有配凭据与音色、这次该用哪个音色（**中英混排必须走中文音色** —— 实测拿英文音色念混排会得到空句子）、模型版本与音色配不配套（`seed-tts-2.0` / `seed-tts-1.0`）、请求体长什么样、四个头是什么。⚠️ 请求体里**刻意不写 `explicit_language`**：它的语义是"只念这个语种"，而词典正文中英混排是常态（见 docs/design/豆包语音合成接入方案.md §6.1 的实测）。⚠️ ok=false 时 reason 是人话，三种原因分开说（没填 Key / 没配音色 / 文本是空的）。</summary>
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, SetLastError = false)]
         internal static extern int dsh_speech_online_plan(IntPtr engine, IntPtr text, IntPtr dict_id, IntPtr overrides_json, out IntPtr out_json);
         /// <summary>在线语音的**检测凭据**那一条：管理窗「检测凭据」要发的那几次请求，该发什么。与 dsh_speech_online_plan 发的是**同一种东西**（同一份拼请求的代码），差别只在「念什么词、用哪个音色」由谁定 —— 这里由**界面正在填的那两个音色**定（用户改了 ID 还没写盘时，要测的必须是「即将存下去的那个」，测设置里存着的旧配置等于没测）。⚙ 逐项约定：① 给了 speaker 就只测它一项，语种用给的那个（认不出按 en），念的词从**内核自带的样本词表**取（`apple` / `苹果` …，与参考实现的 SampleWord 逐条相同）；② 没给 speaker 就**英文 + 中文各测一次**（两个音色的 Key / Resource 配套关系一样，但音色 ID 写错只有实测才发现）；③ 音色是空的 → 那一项 ok=false 且 reason 是「这个音色没填（这一项测不了）」——**「没东西可测」必须与「服务端说它不能用」分开说**，界面的判定（web/src/manager/main.ts 的 classifyDoubaoTest）就吃这一条；④ 没填 Key → 每一项的 reason 都是那句凭据提示。⚠️ 它**不受「在线总开关」限制**（先测通了再打开它，参考实现同一约定），但会**真联网**、按字符计费，所以只由用户点按钮触发。⚠️ 外壳在每一项上再补上 HTTP 的结果（statusCode/bytes/mime/elapsedMs/billedWords/error）与 speakerName —— 后者是**界面上的说法**（`Dacey` / `Vivi`；认不出就是 id 本身），由壳问 `dsh_speech_speaker_label` 得到（参考实现的 `DescribeSpeaker`），**壳里不许再抄一张表**（那个坑）。</summary>
@@ -899,7 +899,7 @@ namespace Lookup.Interop
             }
         }
 
-        /// <summary>在线语音（豆包 · 单向流式 HTTP）的**第一步：内核说该发什么**。三层音源里在线那一层的判断全在这儿：有没有配凭据与音色、这次该用哪个音色（**中英混排必须走中文音色** —— 实测拿英文音色念混排会得到空句子）、模型版本与音色配不配套（`seed-tts-2.0` / `seed-tts-1.0`）、请求体长什么样、四个头是什么。⚠️ 请求体里**刻意不写 `explicit_language`**：它的语义是"只念这个语种"，而词典正文中英混排是常态（见 docs/豆包语音合成接入方案.md 与 的实测）。⚠️ ok=false 时 reason 是人话，三种原因分开说（没填 Key / 没配音色 / 文本是空的）。</summary>
+        /// <summary>在线语音（豆包 · 单向流式 HTTP）的**第一步：内核说该发什么**。三层音源里在线那一层的判断全在这儿：有没有配凭据与音色、这次该用哪个音色（**中英混排必须走中文音色** —— 实测拿英文音色念混排会得到空句子）、模型版本与音色配不配套（`seed-tts-2.0` / `seed-tts-1.0`）、请求体长什么样、四个头是什么。⚠️ 请求体里**刻意不写 `explicit_language`**：它的语义是"只念这个语种"，而词典正文中英混排是常态（见 docs/design/豆包语音合成接入方案.md §6.1 的实测）。⚠️ ok=false 时 reason 是人话，三种原因分开说（没填 Key / 没配音色 / 文本是空的）。</summary>
         internal static void SpeechOnlinePlan(IntPtr engine, string text, string dict_id, string overrides_json, out string out_json)
         {
             IntPtr textPtr = StringToPtr(text);

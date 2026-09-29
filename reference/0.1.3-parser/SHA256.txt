@@ -1,0 +1,28 @@
+# 0.1.3 参考实现的冻结副本 · 逐字节哈希清单
+#
+# 来源（冻结时一次性拷贝，之后再不改动）：
+#   <0.1.3 工作目录>/src/Dictionary/   —— 那棵目录已归档、不随本仓库发布；
+#   这里只记"来自 0.1.3 的 src/Dictionary/"，不记任何人的机器路径。
+# 版本：0.1.3（0.1.x 的最后一版，已冻结，不再改动）
+# 校验：pwsh -File tools/freeze-fixtures.ps1      （参考源 + 测试用词典一起核）
+# 或：  cd reference/0.1.3-parser && sha256sum -c SHA256.txt
+#
+# ⚠️ **只读**：这些文件一改动，tools/golden/baseline/ 里那份标准答案文件基线
+#    就**悄悄**失效了（基线是它们产出的）。见同目录 README.md。
+
+de1bd8333ecce0d30e1f0b7b3b30adcb27c91ea72cb72f29862161e6fb3e7d98  src/Dictionary/DictionaryEngine.cs
+2d5cacee72704bc1ca062b0df90bd20a7f4af9a821a95b081bc7f9e1ef23f310  src/Dictionary/DictionaryProbe.cs
+c3290c4b04aec0d1a54dbe52f18ddfc3e4862191fa8c5e6865ec1c2288790279  src/Dictionary/DictSampler.cs
+b50614aa454c257327bd6d828b16296189e9863828eb61feb269c58a6ea64786  src/Dictionary/EntryAudio.cs
+e40e18c2e1949c34a6aeed21cedb45d45b5ceef5d2b4eb220e9ec7fcf5be21fa  src/Dictionary/EntryDocument.cs
+b8df19ec18d3408845fdfc8865348c4aca043c05b4543b355bf4fe9e21910932  src/Dictionary/HtmlUtils.cs
+7cfcb94022add8ccb602bfa184b61a136e1bb84a85cbe32f17d5ae9530637d14  src/Dictionary/IndexSampling.cs
+2691974706141e1a8ba5d458934bf32398890ec68a5bf4f31058d4c3d066fb2b  src/Dictionary/LruCache.cs
+2362851af0a20b5308a612b7afa534dd90fab8080244d20d9f3d140a1c016ce3  src/Dictionary/Lzo1x.cs
+bc5e4820f726bf79a264cf2f02ed705d7df544e03785a29e104ac464e292dd10  src/Dictionary/MddReader.cs
+5612a7f5c6f2166332eae80d6dba8248b4db4bf608f47870119c1a9482a54f23  src/Dictionary/MdictCore.cs
+74620b26f5ce76ac74216daf768a8127b77da413077e0b7847731f882d0bbd13  src/Dictionary/MdictCrypto.cs
+f69b50dff7b3b1624e398972f524a8f534ece462387e74dd043cbefab960dc45  src/Dictionary/MdxReader.cs
+c4013264c00374cee30c1215a5a826162b1496e5a43f32689aa0e0c26b177968  src/Dictionary/MimeTypes.cs
+8e1a7822bf77129481599ee93c85af7e809f6d7ad306e971f3b5666a40660d5c  src/Dictionary/Ripemd128.cs
+4c7fd943ca5e230fcc8f65be03cfb13be8b281189ae9306dc18d37fb54c8ff45  src/Dictionary/SiblingResource.cs

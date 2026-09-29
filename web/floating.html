@@ -77,6 +77,17 @@
                 ⚠️ 三种来历必须说清，否则用户会以为"词典里真有这条"；空字符串时整行隐藏。
               -->
               <div class="reader-via" id="readerVia" data-via="current" hidden></div>
+              <!--
+                出路按钮（「再问一遍」/「翻译这个词」）—— **由宿主页自己渲染**。
+                ★ 为什么必须长在这一侧（安全审查 F1，P1）：词条正文住在
+                `sandbox="allow-scripts"` 的跨源 iframe 里，词典自带的脚本与桥接脚本跑在
+                **同一个 JS 环境**里 —— 按钮要是长在正文里，词典脚本就能自己 postMessage
+                一条「翻译我指定的这段文字」，让宿主把**它挑的文本**发给收费的翻译接口。
+                所以：凡会外发内容或计费的动作，只能由**可信父页面上的真实点击**发起；
+                正文框从此只上报低权限事件（滚动 / 高度 / 选区 / 空点击 / 播放自带音频）。
+                ⚠️ 位置紧跟解释行：它是接着「未在《…》中找到 X」往下读的，且不用先滚到底。
+              -->
+              <div class="entry-chips" id="entryChips" hidden></div>
               <iframe
                 id="entryFrame"
                 title="词条正文"
@@ -131,7 +142,7 @@
       </div>
     </div>
 
-    <!-- 右键文本菜单：四项走原生命令（见 `docs/输入框右键菜单改走原生编辑命令.md`） -->
+    <!-- 右键文本菜单：四项走原生命令（见 `docs/design/输入框右键菜单改走原生编辑命令.md`） -->
     <div class="context-menu" id="ctxMenu" hidden role="menu"></div>
 
     <!--

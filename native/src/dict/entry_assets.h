@@ -2,13 +2,14 @@
  * 【生成，不许手改】词条正文的两份资产 —— 由 0.1.3 的参考实现产出。
  *
  * 生成：powershell -File tools/make-entry-assets.ps1
- * 来源：0.1.3/src/Dictionary/EntryDocument.cs 的两个 `private const string`
+ * 来源：reference/0.1.3-parser/src/Dictionary/EntryDocument.cs
+ *       （0.1.3 参考实现的仓库内只读副本）的两个 `private const string`
  *       （`BaseStyle` 与 `BridgeScript`，走反射读出来，**一个字节都没改**）
  *
  * ⚠️ 七百多行的 CSS + JS，**绝不许手抄或手改**：抄错一个转义符的症状是
  *    词条页莫名其妙地坏（桥接不生效、样式丢一半），最难查的一类。
- *    要改它们，先改参考实现（但 0.1.3 已冻结），或者在 0.2.0 里另立一份
- *    并说明为什么与参考实现不同。
+ *    要改它们，先改参考实现（那一份是只读副本、0.1.3 已冻结），
+ *    或者在本仓库里另立一份并说明为什么与参考实现不同。
  * ========================================================================== */
 
 #ifndef DSH_ENTRY_ASSETS_H

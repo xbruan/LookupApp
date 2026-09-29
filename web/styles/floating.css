@@ -528,6 +528,50 @@
 .reader-via[hidden] {
   display: none;
 }
+
+/*
+ * 出路按钮（「再问一遍」/「翻译这个词」）。
+ *
+ * ⚠️ 它们是**宿主页的控件**，不是正文的一部分 —— 原因不是排版，是授权边界：
+ * 正文住在跨源 sandbox iframe 里，词典脚本与桥接脚本同处一个 JS 环境，按钮长在那边
+ * 就等于把"外发文本 / 计费"的授权交给了词典（详见 `main.ts` 的 `renderEntryChips`）。
+ *
+ * 布局：`.reader` 是纵向 flex，这一条 `flex: 0 0 auto` 跟在解释行后面、正文之前，
+ * 所以它**不占正文高度**（正文仍然 `flex: 1 1 auto` 吃掉剩下的），也不需要先滚到底才看得见。
+ * ⚠️ 颜色走**主题变量**（`--accent` / `--accent-soft` / `--shell-bg`）而不是正文那份写死的
+ * `rgba(47,109,246,…)`：原来那排长在词条正文里（那一份永远是浅色），现在它是宿主页的控件，
+ * 深色主题下必须跟着一起变 —— 照抄旧值会在深色下变成一块发白的蓝。
+ */
+.entry-chips {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--shell-border);
+  background: var(--paper);
+}
+.entry-chips[hidden] {
+  display: none;
+}
+.entry-chip {
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--shell-border-strong);
+  background: var(--accent-soft);
+  color: var(--accent);
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.entry-chip:hover {
+  border-color: var(--accent-ring);
+}
 .reader iframe {
   display: block;
   width: 100%;

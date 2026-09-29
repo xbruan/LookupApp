@@ -461,6 +461,13 @@ namespace Lookup.App
             Ok(await ReadTextAsync(core, "String(document.getElementById('ctxMenu').hidden)") == "true",
                "点完之后菜单自己收起了");
 
+            /*
+             * 词条正文那一页的框架句柄（**另一个源**上的那个 frame）。
+             * ⑮ 那一节拿到它，⑲ 那一节（桥的来源校验）接着拿它当靶子 ——
+             * 所以必须声明在各节自己的 `{}` **外面**（声明在 ⑮ 里面，⑲ 就看不见了：CS0103）。
+             */
+            CoreWebView2Frame crossOriginFrame = null;
+
             /* ══ ⑮ 不带 .mdd 的词典的外链 `.js`：**真取到了、真在词条 iframe 里跑起来了** ═══
              * ⚠️ "跑起来了"这一跳要 WebView2 + 词条正文的 CSP + 跨源 iframe 的 `sandbox` +
              * 虚拟主机那条路由**同时**成立（只验得了"白名单放行了 `.js`"），所以只能留在。
@@ -491,6 +498,7 @@ namespace Lookup.App
                         " i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })();");
                     var siblingFrame = await FindEntryFrameAsync(bridge.Frames, "同目录脚本词典", 20000, true);
                     Ok(siblingFrame != null, "不带 .mdd 的词典那一页装起来了（拿到它的框架句柄）");
+                    crossOriginFrame = siblingFrame;   // 交给 ⑲ 那一节当靶子（见它顶上那段）
                     if (siblingFrame != null)
                     {
                         /*
@@ -529,6 +537,91 @@ namespace Lookup.App
                             15000);
                     }
                 }
+            }
+
+            /* ══ ⑲ 桥的**来源校验**：词条正文那一侧调不动桥（2026-09 加固）═════════════
+             *
+             * 为什么这条降不到 A/B/C：`window.chrome.webview` 是 WebView2 注入到**每一个**
+             * frame 里的 —— 词条正文住在 `*.dictres.invalid`（**另一个源**），即使它取不到
+             * `bridge.js`（CSP `default-src 'self'`），也照样能直接
+             * `chrome.webview.postMessage(...)` 发一条与外壳页面**一模一样**的桥请求。
+             * 所以"谁有资格调桥"这条边界只能拿**真窗口 + 真跨源 frame**去验。
+             *
+             * 靶子用的是上一节那本「同目录脚本词典」的词条页（还开着）—— 拿 `core:abi`
+             * （只读、无副作用）当请求体，绝不拿写剪贴板 / 挑文件那类当靶子。
+             *
+             * ⚠️ 这条钉的是**来源**这一件事，别把它读成"F1 已经被它修好了"：
+             * F1 是**同一个 JS 环境里的脚本**伪造消息，那种伪造的来源就是可信的正文框窗口本身，
+             * 来源校验对它毫无作用。F1 的边界在前端（见 `tools/check-entry-auth.mjs`）。
+             */
+            if (crossOriginFrame != null)
+            {
+                var seenBefore = bridge.MessagesSeen;
+                var rejectedBefore = bridge.RejectedMessages;
+                /*
+                 * ⚠️ 判据要**分开**记两件事，别只看"丢了几条"：
+                 *   · `MessagesSeen` 涨没涨 = **这条消息到底送到宿主了没有**；
+                 *   · `RejectedMessages` 涨没涨 = **送到了之后有没有被挡下来**。
+                 * 只记后者的话，"0 条"既可能是"挡住了"、也可能是"根本没送到" —— 两者结论相反。
+                 * （第一次实测就是这么被绊住的：只看到 0 条，分不出是哪种。）
+                 */
+                await FrameTextAsync(crossOriginFrame,
+                    "(function () { window.__dshForged = 'sent';" +
+                    " try {" +
+                    "   window.chrome.webview.addEventListener('message', function (ev) {" +
+                    "     window.__dshForged = 'REPLIED:' + String(ev.data).slice(0, 40); });" +
+                    "   window.chrome.webview.postMessage(JSON.stringify(" +
+                    "     { id: 99001, method: 'core:abi', params: {} }));" +
+                    " } catch (e) { window.__dshForged = 'no-webview:' + e.message; }" +
+                    " return window.__dshForged; })()");
+                await Task.Delay(800);
+
+                var forgedOutcome = await FrameTextAsync(crossOriginFrame,
+                    "String(window.__dshForged || '(没设)')");
+                Ok(forgedOutcome == "sent",
+                   "⑲ ★ 词条正文那一侧**确实能把桥请求发出去**（`chrome.webview` 每个 frame 都有），实际 " +
+                   Show(forgedOutcome));
+                var seen = bridge.MessagesSeen - seenBefore;
+                var rejected = bridge.RejectedMessages - rejectedBefore;
+                var lastSrc = bridge.MessageSources.Count > 0
+                    ? bridge.MessageSources[bridge.MessageSources.Count - 1]
+                    : "(没记到)";
+                Say("  ⑲ 实测结果：宿主共收到 " + seen + " 条桥消息（最后一条的 `e.Source` = " +
+                    Show(lastSrc) + "），其中被来源校验丢掉 " + rejected + " 条");
+                if (seen == 0)
+                {
+                    /*
+                     * 这一支是**实测结论**，不是"没验到"：WebView2 在这个配置下**不把**
+                     * `sandbox="allow-scripts"`（不透明源）子 frame 的 `chrome.webview.postMessage`
+                     * 递给宿主的 `WebMessageReceived`。那么这条攻击面在**本配置下不存在**，
+                     * 而宿主那道来源校验是**纵深防御**（防的是"以后哪个页面 / 哪扇窗把 bridge
+                     * 带进了别的源"），不是这条路的修法。如实记下来，别把它写成"挡住了"。
+                     */
+                    Say("  [说明] 第 ⑲ 节：那条伪造消息**没有送到宿主**（MessagesSeen 没涨）——");
+                    Say("         即 WebView2 在本配置下不把不透明源子 frame 的桥消息递给宿主。");
+                    Say("         所以宿主那道来源校验是**纵深防御**，不是这条攻击面的修法。");
+                }
+                else
+                {
+                    Ok(rejected > 0,
+                       "⑲ ★★ 宿主收到了它，并按**来源**丢掉了它（不是外壳页面发的）：本轮丢了 " +
+                       rejected + " 条");
+                }
+                /*
+                 * 反向对照：**外壳页面这一侧照旧能调桥**。
+                 *
+                 * 少了这一条，上面那两条断言用"桥整个坏掉了"也能满足 —— 来源校验写成
+                 * "谁都拦"就同样绿。这里真调一条既有接口，证明被拦掉的**只是**来源不对的那些。
+                 */
+                var shellDicts = Str(ValueOf(await CallAsync(core,
+                    "(async () => { const list = await window.dshLookup.floating.listDictionaries();" +
+                    " return 'n=' + list.length; })()", 15000)));
+                Ok(shellDicts != null && shellDicts.StartsWith("n=") && shellDicts != "n=0",
+                   "⑲ 反向对照：外壳页面调桥照旧拿得到回包（listDictionaries → " + Show(shellDicts) + "）");
+            }
+            else
+            {
+                Say("  [跳过] 第 ⑲ 节（桥的来源校验）：上一节没拿到词条框架，没有靶子。");
             }
 
             /* ══ ⑯ 「点了却没反应」那三条路：正文框里要**如实说一句** ═══════════════
@@ -702,14 +795,21 @@ namespace Lookup.App
                         v => v != null && v.Contains("translate"), 30000);
                     Ok(chips != null, "⑰ 终态页上摆出了「翻译」这条出路（data-chips=" + Show(chips) + "）");
 
-                    /* ② 点词条正文里那颗按钮 —— 它挂的是 **mousedown**（与出路按钮同一条规矩） */
-                    var trFrame = await FindEntryFrameAsync(bridge.Frames, probeWord, 25000, true);
-                    Ok(trFrame != null, "⑰ 终态页那一页装起来了（拿到框架句柄）");
-                    var chipClicked = trFrame == null ? null : await FrameTextAsync(trFrame,
-                        "(function () { var list = document.querySelectorAll('#lookupChips button');" +
+                    /* ② 点一颗按钮 —— 而它是**宿主页上**那一颗。
+                     *
+                     * ⚠️ 出路按钮 2026-09 从词条正文搬到了宿主页（授权边界：凡"外发内容 / 计费"
+                     * 的动作只能由**可信父页面上的真实点击**发起 —— 按钮长在跨源 iframe 里，
+                     * 词典自带的脚本就能伪造一条消息让宿主把**它挑的文本**发出去，见
+                     * `web/src/floating/main.ts` 的 `renderEntryChips`）。
+                     * 于是这一条读的是宿主页的 `#entryChips`，而且它挂的是 **`click`** ——
+                     * 正文里那套「`mousedown` + 顺手读 scrollY」的规矩在这儿用不上也不需要。
+                     * ⚠️ 别改回 `#lookupChips`（正文里那个容器还在，但已经是空的死容器）。
+                     */
+                    var chipClicked = await ReadTextAsync(core,
+                        "(function () { var list = document.querySelectorAll('#entryChips button');" +
                         " for (var i = 0; i < list.length; i++) {" +
                         "   if (list[i].dataset.chipAction === 'translate') {" +
-                        "     list[i].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));" +
+                        "     list[i].click();" +
                         "     return 'clicked'; } }" +
                         " return 'no-chip'; })()");
                     Ok(chipClicked == "clicked", "⑰ 点到了「翻译」那颗按钮（" + Show(chipClicked) + "）");
@@ -1203,7 +1303,7 @@ namespace Lookup.App
                  *
                  * ⚠️ 用的是**一把随手编的 Key**（`k-selfcheck`）：这一步**不该**依赖
                  *    网络今天通不通、也不该真花钱 —— 它要钉的是"有结果、形状对"。
-                 *    真 Key 下的"今天通不通"由  回答。
+                 *    真 Key 下的"今天通不通"由 `tools/probe-doubao.mjs` 回答（要 Key、联网、按量计费）。
                  * ⚠️ 收尾把 Key 清回去（后面几节按"没配在线凭据"的前提走）。
                  */
                 {
@@ -1256,8 +1356,8 @@ namespace Lookup.App
                        "（ok 必有字节、不通必有人话）：" + Show(both));
                     Ok(both.Contains("speakers=en_female_dacey_uranus_bigtts,zh_female_vv_uranus_bigtts"),
                        "★★ 默认音色就是**用户挑的那两个**（英文 `en_female_dacey_uranus_bigtts` = Dacey /" +
-                       "中文 `zh_female_vv_uranus_bigtts` = Vivi）——与 参考实现逐字相同，" +
-                       "真服务的实测结果见  ：" + Show(both));
+                       "中文 `zh_female_vv_uranus_bigtts` = Vivi）——与参考实现逐字相同；" +
+                       "真服务的实测结果见 `tools/probe-doubao.mjs`（要 Key、联网、按量计费）：" + Show(both));
                     Ok(both.Contains("names=Dacey,Vivi"),
                        "★★ 「界面上的说法」也是那两个官网名（`Dacey` / `Vivi`）——" +
                        "名字由内核那张表给（`dsh_speech_speaker_label`），壳不抄第二份：" + Show(both));
@@ -1625,7 +1725,7 @@ namespace Lookup.App
              *   · 「开机自动启动」真的读写 `HKCU\…\Run` —— 那是**机器状态**，
              *     而且"跑完必须退回原值"只有这一级能兜住（下面 finally 里就是它）。
              *   · 「启动时显示悬浮窗」的**效果**（下一次启动不显示胶囊）要**重启一次程序**才验得到，
-             *     那一步在  的第二趟启动里；这里钉的是
+             *     那一步在 `tools/test-shell-app.ps1` 第 ④ 步的第二趟启动里；这里钉的是
              *     "页面改得动、内核收得下、页面看得见真实值"这一段。
              *
              * ⚠️ 这一节**真的会动用户的注册表**（写进去、再删掉），所以：
@@ -1745,7 +1845,7 @@ namespace Lookup.App
                     Ok(showAfter != showBefore, "⑬ ★ 而且确实翻了过去（改之前 " + showBefore + "）");
                     /*
                      * ⚠️ 它的**效果**（下一次启动不显示胶囊）在这一级验不了 —— 那要重启一次程序，
-                     *    落在  的第二趟启动那一段（两个方向都验）。
+                     *    落在 `tools/test-shell-app.ps1` 第 ④ 步那一段的第二趟启动（两个方向都验）。
                      */
                     /* 收尾：改回原样（"进来什么样出去什么样"是规矩） */
                     await CallAsync(mcore2,

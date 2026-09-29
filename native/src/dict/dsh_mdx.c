@@ -24,6 +24,29 @@
 #define DSH_COMPRESS_LZO 0x01000000u
 #define DSH_COMPRESS_ZLIB 0x02000000u
 
+/* ── 解析期的规模预算（**整份文件只有这一处定义**：索引 / 单块 / 单词条 / 总量共用）──────
+ *
+ * 为什么非有不可：文件里的长度字段全是**文件内容说了算的整数**。只做「先比大小再相加」
+ * 能防溢出，却挡不住一个几百字节的坏文件按声明值去要几百兆内存。2026-09 的审计两条都出在
+ * 这里：① 记录块解压长度累加溢出（一个 16,720 字节的文件，1,025 项各声明 2^53）；
+ * ② 346 字节的文件声明 1,000 万个词块，解析器当场按声明值要 640,000,000 字节。
+ *
+ * 三条通则：
+ *   · **先算上限、再分配**：条数上限只能由信息块的**真实长度**推出来（每条至少占几个
+ *     字节），不许拿头里的声明值直接乘 sizeof 去分配；
+ *   · **先比大小、再相加**：任何累加都先查 `INT64_MAX - 累加器` 与总量预算，绝不让它回绕
+ *     —— 回绕成负数之后所有基于偏移的边界检查都会失效，而且是**静默**失效；
+ *   · **荒诞值按格式错误处理**，不当警告：警告会放着一个已知坏掉的文件继续往下走。
+ *
+ * 数值取得很宽，只挡荒诞值、不当性能阈值 —— 实测最大的固定素材
+ * （9.2 MB 的 big.mdx）记录区解压总量是文件的 10 倍，10 KB 的 audio.mdd 是 26 倍，
+ * 离下面这些上限都差好几个量级。 */
+#define DSH_MDX_MAX_ENTRIES 10000000LL                        /* 索引项数硬上限（沿用原值，别放大） */
+#define DSH_MDX_MAX_INDEX_BYTES ((int64_t)256 * 1024 * 1024)  /* 索引数组**自身**的字节上限 */
+#define DSH_MDX_MAX_BLOCK_UNPACK ((int64_t)512 * 1024 * 1024) /* 单块解压后的字节上限（与 dsh_inflate 的输出上限取齐） */
+#define DSH_MDX_UNPACK_RATIO 16384LL                          /* 解压总量 ≤ 文件长度 × 这个倍数 … */
+#define DSH_MDX_UNPACK_FLOOR ((int64_t)1 << 20)               /* … 再兜 1 MiB 的底（很小的文件也要放得下正常的头与索引） */
+
 struct dsh_mdx {
   FILE *fp;
   char *path;
@@ -199,6 +222,60 @@ static int64_t read_be(const uint8_t *b, size_t b_len, size_t offset, int width)
     }
     default: return 0;
   }
+}
+
+/* ── 规模检查（分配之前、累加之前都要过这几关）─────────────────────────────
+ * 四个助手对应预算的四档：索引项数/字节 → 单块 → 累加 → 总量；都在这里收口，
+ * 免得同一条检查在四个地方各写一遍、写着写着就不一样了。 */
+
+/** 索引数组能不能按 count 条分配：条数非负、不超条数上限、字节数不超预算。
+ * ⚠️ 必须先查再分配：`count * sizeof(T)` 自己会溢出，而 count 是文件说了算的。 */
+static int index_budget_ok(const char *what, int64_t count, size_t elem) {
+  if (count < 0 || count > DSH_MDX_MAX_ENTRIES) {
+    dsh_set_last_error("%s的条数不合法：%lld（上限 %lld）", what, (long long)count,
+                       (long long)DSH_MDX_MAX_ENTRIES);
+    return 0;
+  }
+  if (elem > 0 && (uint64_t)count > (uint64_t)DSH_MDX_MAX_INDEX_BYTES / (uint64_t)elem) {
+    dsh_set_last_error("%s需要 %lld 项 × %zu 字节，超过索引预算 %lld 字节（文件已损坏）", what,
+                       (long long)count, elem, (long long)DSH_MDX_MAX_INDEX_BYTES);
+    return 0;
+  }
+  return 1;
+}
+
+/** 单个块声明的「解压后字节数」可不可信（单词条那一档也走它） */
+static int block_unpack_ok(int64_t size) {
+  return size >= 0 && size <= DSH_MDX_MAX_BLOCK_UNPACK;
+}
+
+/** 解压总量的可信上限：文件长度 × 倍数，至少给 DSH_MDX_UNPACK_FLOOR 的底。
+ * 为什么不用一个固定常数当总量上限：真词典的大小差好几个量级，固定值要么卡死大词典、
+ * 要么对畸形文件形同虚设；「相对文件长度」才是既能放过真词典、又能挡住荒诞值的口径。 */
+static int64_t unpack_total_cap(const dsh_mdx *m) {
+  const int64_t len = (m->map_len > 0) ? m->map_len : 0;
+  if (len > INT64_MAX / DSH_MDX_UNPACK_RATIO) return INT64_MAX; /* × 倍数自己也别溢出 */
+  const int64_t scaled = len * DSH_MDX_UNPACK_RATIO;
+  return (scaled < DSH_MDX_UNPACK_FLOOR) ? DSH_MDX_UNPACK_FLOOR : scaled;
+}
+
+/** 累加会不会溢出（**先查后加**的判据）。
+ * ⚠️ 顺序不许反：「先加再查」那一次加法本身就是未定义行为（UBSan：signed integer overflow），
+ * 而且回绕出来的负数会让后面所有 `offset + len <= 文件长度` 式的检查**静默**失效。
+ * 入参 add 与 acc 都必须已确认非负，否则 INT64_MAX - acc 自己就不安全。 */
+static int acc_would_overflow(int64_t acc, int64_t add) {
+  return acc < 0 || add < 0 || add > INT64_MAX - acc;
+}
+
+/** [base + offset, base + offset + len) 是不是整段落在文件里。
+ * ⚠️ 三处相加都要**先比大小再相减**：写成 `base + offset + len <= map_len` 的话，
+ * 左边自己会溢出成负数，于是越界的区间反而通过检查。 */
+static int range_inside_file(const dsh_mdx *m, int64_t base, int64_t offset, int64_t len) {
+  if (base < 0 || offset < 0 || len < 0) return 0;
+  if (base > m->map_len) return 0;
+  const int64_t budget = m->map_len - base;
+  if (offset > budget) return 0;
+  return len <= budget - offset;
 }
 
 /* ── 文本解码 ───────────────────────────────────────────────────────────────
@@ -418,11 +495,32 @@ static int read_key_header(dsh_mdx *m) {
     dsh_set_last_error("键信息块大小非法：%lld", (long long)m->key_info_packed_size);
     return -1;
   }
+  /* 键信息块**解压后**的大小只是个提示（zlib 那条路拿它当初始缓冲的规模），但它同样是文件
+   * 说了算的数：不查它，一个声明 2^53 的坏文件会让解压器一上来就按它要缓冲。 */
+  if (!block_unpack_ok(m->key_info_unpack_size)) {
+    dsh_set_last_error("键信息块解压后大小非法：%lld（上限 %lld 字节）",
+                       (long long)m->key_info_unpack_size,
+                       (long long)DSH_MDX_MAX_BLOCK_UNPACK);
+    return -1;
+  }
 
   /* 每一段都从**上一段的末尾**接下去算（偏移名字见 read_header 末尾）。 */
   m->key_info_offset = m->key_header_offset + meta_size + (m->version >= 2.0 ? 4 : 0);
   m->key_block_offset = m->key_info_offset + m->key_info_packed_size;
   m->record_header_offset = m->key_block_offset + m->key_block_packed_size;
+
+  /* 键区两段都必须整段落在文件里。越界的事在这里说清 —— 留到「读第 N 块」时才报的话，
+   * 报出来的是**某一项的偏移**，看不出真正坏掉的是键区头部声明的大小。 */
+  if (!range_inside_file(m, 0, m->key_info_offset, m->key_info_packed_size) ||
+      !range_inside_file(m, 0, m->key_block_offset, m->key_block_packed_size)) {
+    dsh_set_last_error(
+        "键区声明的大小把文件读穿了：键信息块 [%lld, +%lld)／词块数据 [%lld, +%lld)，"
+        "而文件只有 %lld 字节",
+        (long long)m->key_info_offset, (long long)m->key_info_packed_size,
+        (long long)m->key_block_offset, (long long)m->key_block_packed_size,
+        (long long)m->map_len);
+    return -1;
+  }
   return 0;
 }
 
@@ -552,6 +650,27 @@ static int read_key_infos(dsh_mdx *m) {
   const int w = m->num_width;
   const int ws = w / 4; /* 词条名长度字段的宽度：v2.0 = 2 字节，v1.2 = 1 字节 */
   const int64_t count = m->key_block_count;
+
+  /* ★★ 先按信息块的**真实长度**推导「最多能有几个词块」，**再**分配 —— 这是 F3 的正面。
+   * 每一项至少占：词条数(w) + 首词长(ws) + 尾词长(ws) + 压缩大小(w) + 解压大小(w)
+   * = 2w + 2ws 字节（首尾词本身的字节数只会更多，所以这是个**下界**，只会放不会卡）。
+   * 声明条数超过这个下界推出来的容量，说明信息块**根本没有那么多内容** ——
+   * 只信声明值的话，346 字节的文件就能让解析器按声明值要 640,000,000 字节。 */
+  const int64_t per_entry_min = (int64_t)(2 * w + 2 * ws);
+  const int64_t max_by_bytes = (int64_t)(buf_len / (size_t)per_entry_min);
+  if (count > max_by_bytes) {
+    dsh_release(buf);
+    dsh_set_last_error(
+        "键信息块声明有 %lld 个词块，而它解出来只有 %zu 字节（每个词块至少 %lld 字节）"
+        "—— 声明与内容不符",
+        (long long)count, buf_len, (long long)per_entry_min);
+    return -1;
+  }
+  if (!index_budget_ok("词块索引数组", count, sizeof(dsh_mdx_key_block))) {
+    dsh_release(buf);
+    return -1;
+  }
+
   dsh_mdx_key_block *blocks =
       (dsh_mdx_key_block *)dsh_mem_alloc((size_t)(count > 0 ? count : 1) * sizeof(*blocks));
   if (blocks == NULL) {
@@ -563,7 +682,10 @@ static int read_key_infos(dsh_mdx *m) {
 
   size_t off = 0;
   int64_t entries_acc = 0, pack_acc = 0, unpack_acc = 0;
-  int64_t failed_at = -1; /* 读不下去的那一块（报错时点名，别让人自己数） */
+  int64_t failed_at = -1;  /* 读不下去的那一块（报错时点名，别让人自己数） */
+  const char *fail_reason = NULL; /* 新加的那几关失败时的人话（老路径保持原文案） */
+  char fail_detail[192];          /* 原因里带上具体数字：只报「坏了」看不出坏成什么样 */
+  fail_detail[0] = '\0';
   int ok = 1;
   for (int64_t i = 0; i < count && ok; i++) {
     dsh_mdx_key_block *kb = &blocks[i];
@@ -571,6 +693,14 @@ static int read_key_infos(dsh_mdx *m) {
     kb->entry_count = read_be(buf, buf_len, off, w);
     off += (size_t)w;
     if (kb->entry_count < 0) { ok = 0; break; }
+    /* 单个词块声明的词条数也要过条数上限：它是「块内读满就停」的判据，天文数字没有意义 */
+    if (kb->entry_count > DSH_MDX_MAX_ENTRIES) {
+      snprintf(fail_detail, sizeof(fail_detail), "声明的词条数 %lld 超出上限 %lld",
+               (long long)kb->entry_count, (long long)DSH_MDX_MAX_ENTRIES);
+      fail_reason = fail_detail;
+      ok = 0;
+      break;
+    }
 
     int64_t first_size = read_be(buf, buf_len, off, ws);
     off += (size_t)ws;
@@ -609,21 +739,66 @@ static int read_key_infos(dsh_mdx *m) {
     }
     if (kb->first_key == NULL || kb->last_key == NULL) { ok = 0; break; }
     if (kb->pack_size < 0 || kb->unpack_size < 0) { ok = 0; break; }
+    /* 单块解压上限：文件说了算的数，超过就当格式错误（真词典的块是几十 KB 量级） */
+    if (!block_unpack_ok(kb->unpack_size)) {
+      snprintf(fail_detail, sizeof(fail_detail), "声明的解压后大小 %lld 超出单块上限 %lld 字节",
+               (long long)kb->unpack_size, (long long)DSH_MDX_MAX_BLOCK_UNPACK);
+      fail_reason = fail_detail;
+      ok = 0;
+      break;
+    }
+    /* 这一块的压缩数据必须整段落在文件里 —— 越界不要留到「读第 N 块」时才报 */
+    if (!range_inside_file(m, m->key_block_offset, pack_acc, kb->pack_size)) {
+      snprintf(fail_detail, sizeof(fail_detail),
+               "压缩数据（基址 %lld + 偏移 %lld，长 %lld）落在 %lld 字节的文件之外",
+               (long long)m->key_block_offset, (long long)pack_acc, (long long)kb->pack_size,
+               (long long)m->map_len);
+      fail_reason = fail_detail;
+      ok = 0;
+      break;
+    }
 
     kb->pack_offset = pack_acc;
     kb->unpack_offset = unpack_acc;
     kb->entry_offset = entries_acc;
+    /* ★★ 三处累加都**先查后加**（F2 同样出在词块这一侧：单项合法不等于总和合法） */
+    if (acc_would_overflow(entries_acc, kb->entry_count) ||
+        acc_would_overflow(pack_acc, kb->pack_size) ||
+        acc_would_overflow(unpack_acc, kb->unpack_size)) {
+      snprintf(fail_detail, sizeof(fail_detail),
+               "累计长度加溢出（词条 %lld+%lld／压缩 %lld+%lld／解压 %lld+%lld）",
+               (long long)entries_acc, (long long)kb->entry_count, (long long)pack_acc,
+               (long long)kb->pack_size, (long long)unpack_acc, (long long)kb->unpack_size);
+      fail_reason = fail_detail;
+      ok = 0;
+      break;
+    }
     entries_acc += kb->entry_count;
     pack_acc += kb->pack_size;
     unpack_acc += kb->unpack_size;
+    /* 总量预算：解压总量相对文件长度说不通时也是格式错误，不是警告 */
+    if (unpack_acc > unpack_total_cap(m)) {
+      snprintf(fail_detail, sizeof(fail_detail),
+               "解压总长度 %lld 超出「文件长度 %lld × %lld + 余量」的口径，与文件大小不符",
+               (long long)unpack_acc, (long long)m->map_len, (long long)DSH_MDX_UNPACK_RATIO);
+      fail_reason = fail_detail;
+      ok = 0;
+      break;
+    }
   }
 
   /* 无论成败都要把已经建好的索引还给 m（失败时由 close 释放，免得泄漏） */
   m->key_blocks = blocks;
   if (!ok) {
     dsh_release(buf);
-    dsh_set_last_error("键信息块内容损坏：第 %lld 个词块的条目读不下去（已解出 %zu 字节）",
-                       (long long)failed_at, buf_len);
+    /* 老路径（字段读不下去）保持原话术不动 —— 它被别的检查标准盯着；新加的那几关带上原因 */
+    if (fail_reason != NULL) {
+      dsh_set_last_error("键信息块内容损坏：第 %lld 个词块%s（已解出 %zu 字节）",
+                         (long long)failed_at, fail_reason, buf_len);
+    } else {
+      dsh_set_last_error("键信息块内容损坏：第 %lld 个词块的条目读不下去（已解出 %zu 字节）",
+                         (long long)failed_at, buf_len);
+    }
     return -1;
   }
 
@@ -673,6 +848,29 @@ static int read_record_infos(dsh_mdx *m) {
   m->record_info_offset = m->record_header_offset + len;
   m->record_block_offset = m->record_info_offset + m->record_info_comp_size;
 
+  /* ★★ 索引项数必须与**索引自己的字节长度**对得上：每项固定占 pack_size(w) + unpack_size(w)
+   * = 2w 字节，所以「声明块数 > 信息块字节数 / 2w」时，那份信息块根本装不下这么多项 ——
+   * 这是**先于分配**就能判定的格式错误（F3 的同一条通则：先按真实长度算上限再分配）。 */
+  const int64_t rec_entry_min = (int64_t)(2 * w);
+  const int64_t rec_max_by_bytes = (int64_t)(m->record_info_comp_size / rec_entry_min);
+  if (m->record_block_count > rec_max_by_bytes) {
+    dsh_set_last_error("记录信息块声明有 %lld 个记录块，而它只有 %lld 字节（每块 %lld 字节）"
+                       "—— 声明与内容不符",
+                       (long long)m->record_block_count,
+                       (long long)m->record_info_comp_size, (long long)rec_entry_min);
+    return -1;
+  }
+  if (!index_budget_ok("记录块索引数组", m->record_block_count, sizeof(dsh_mdx_record_block))) {
+    return -1;
+  }
+  /* 记录块数据整段都要落在文件里（压缩区间在后面逐项再查一遍） */
+  if (!range_inside_file(m, 0, m->record_block_offset, m->record_block_comp_size)) {
+    dsh_set_last_error("记录块数据把文件读穿了：记录块数据区 [%lld, +%lld)，文件只有 %lld 字节",
+                       (long long)m->record_block_offset,
+                       (long long)m->record_block_comp_size, (long long)m->map_len);
+    return -1;
+  }
+
   if (m->record_block_count > 0) {
     const uint8_t *info = view_at(m,
                             m->record_info_offset,
@@ -688,22 +886,72 @@ static int read_record_infos(dsh_mdx *m) {
     memset(rb, 0, (size_t)m->record_block_count * sizeof(*rb));
     size_t off = 0;
     int64_t pack_acc = 0, unpack_acc = 0;
+    int64_t failed_at = -1;
+    const char *fail_reason = NULL;
+    char fail_detail[192];
+    fail_detail[0] = '\0';
     int ok = 1;
     for (int64_t i = 0; i < m->record_block_count; i++) {
+      failed_at = i;
       rb[i].pack_size = read_be(info, (size_t)m->record_info_comp_size, off, w);
       off += (size_t)w;
       rb[i].unpack_size = read_be(info, (size_t)m->record_info_comp_size, off, w);
       off += (size_t)w;
       if (rb[i].pack_size < 0 || rb[i].unpack_size < 0) { ok = 0; break; }
+      /* 单块解压上限（真词典的块是几十 KB 量级；512MB 与 dsh_inflate 的输出上限取齐） */
+      if (!block_unpack_ok(rb[i].unpack_size)) {
+        snprintf(fail_detail, sizeof(fail_detail),
+                 "声明的解压后大小 %lld 超出单块上限 %lld 字节",
+                 (long long)rb[i].unpack_size, (long long)DSH_MDX_MAX_BLOCK_UNPACK);
+        fail_reason = fail_detail;
+        ok = 0;
+        break;
+      }
+      /* 这一块的压缩数据必须整段落在文件里 */
+      if (!range_inside_file(m, m->record_block_offset, pack_acc, rb[i].pack_size)) {
+        snprintf(fail_detail, sizeof(fail_detail),
+                 "压缩数据（基址 %lld + 偏移 %lld，长 %lld）落在 %lld 字节的文件之外",
+                 (long long)m->record_block_offset, (long long)pack_acc,
+                 (long long)rb[i].pack_size, (long long)m->map_len);
+        fail_reason = fail_detail;
+        ok = 0;
+        break;
+      }
       rb[i].pack_offset = pack_acc;
       rb[i].unpack_offset = unpack_acc;
+      /* ★★ F2 的正面：**先查后加**。每一项单独看都合法（read_be 允许到 2^53），
+       * 但「单项合法」不等于「总和合法」—— 直接相加那一步就是 UBSan 报的
+       * signed integer overflow，回绕出来的负数还会让后面所有偏移检查静默失效。 */
+      if (acc_would_overflow(pack_acc, rb[i].pack_size) ||
+          acc_would_overflow(unpack_acc, rb[i].unpack_size)) {
+        snprintf(fail_detail, sizeof(fail_detail),
+                 "累计长度加溢出（压缩 %lld+%lld／解压 %lld+%lld）", (long long)pack_acc,
+                 (long long)rb[i].pack_size, (long long)unpack_acc,
+                 (long long)rb[i].unpack_size);
+        fail_reason = fail_detail;
+        ok = 0;
+        break;
+      }
       pack_acc += rb[i].pack_size;
       unpack_acc += rb[i].unpack_size;
+      /* 解压总量与文件大小差了好几个量级 → 格式错误，不是警告 */
+      if (unpack_acc > unpack_total_cap(m)) {
+        snprintf(fail_detail, sizeof(fail_detail),
+                 "解压总长度 %lld 超出「文件长度 %lld × %lld + 余量」的口径，与文件大小不符",
+                 (long long)unpack_acc, (long long)m->map_len, (long long)DSH_MDX_UNPACK_RATIO);
+        fail_reason = fail_detail;
+        ok = 0;
+        break;
+      }
     }
     m->record_blocks = rb;
     if (!ok) {
-      dsh_set_last_error("记录信息块内容损坏（第 %lld 项读不下去）",
-                         (long long)m->record_block_count);
+      if (fail_reason != NULL) {
+        dsh_set_last_error("记录信息块内容损坏：第 %lld 项读不下去：%s", (long long)failed_at,
+                           fail_reason);
+      } else {
+        dsh_set_last_error("记录信息块内容损坏（第 %lld 项读不下去）", (long long)failed_at);
+      }
       return -1;
     }
     if (pack_acc != m->record_block_comp_size) {
@@ -1512,6 +1760,10 @@ int dsh_mdx_prefix_search(dsh_mdx *m, const char *prefix, int64_t max_count, cha
   if (m == NULL || prefix == NULL || prefix[0] == '\0') return 0;
   if (max_count <= 0) return 0;
 
+  /* 条数虽然由调用方给，但 `max_count * sizeof(char *)` 这个乘法必须在这里过一遍预算：
+   * 乘法自己会溢出（溢出成一个很小的数就成了**堆溢出**），而预算那一关是同一条规矩。 */
+  if (!index_budget_ok("前缀结果数组", max_count, sizeof(char *))) return -1;
+
   char **keys = (char **)dsh_mem_alloc((size_t)max_count * sizeof(char *));
   if (keys == NULL) {
     dsh_set_last_error("内存不足：前缀结果需要 %lld 项", (long long)max_count);
@@ -1677,7 +1929,10 @@ static int parse_block_keys(dsh_mdx *m, int64_t block_index, char ***out_keys,
     text = decode_text(m, buf + key_start, key_end - key_start, NULL);
     if (text == NULL) break;
     if (n == cap) {
-      int64_t bigger = cap * 2;
+      /* 增长也要过索引预算：这一条的增长由**真读出来的键数**驱动（不是声明值），
+       * 但真读出来的键数最终也由文件内容决定，所以同样要有上限兜底。 */
+      const int64_t bigger = cap * 2;
+      if (!index_budget_ok("词块键名数组", bigger, sizeof(char *))) break;
       char **grown = (char **)dsh_mem_alloc((size_t)bigger * sizeof(char *));
       if (grown == NULL) {
         dsh_release(text);
@@ -1726,13 +1981,12 @@ int dsh_mdx_list_keys(dsh_mdx *m, char ***out_keys, int64_t *out_count) {
   *out_count = 0;
   if (m->key_count <= 0) return 0;
 
-  char **keys = (char **)dsh_mem_alloc((size_t)m->key_count * sizeof(char *));
-  if (keys == NULL) {
-    dsh_set_last_error("内存不足：键名数组需要 %lld 项", (long long)m->key_count);
-    return -1;
-  }
-  memset(keys, 0, (size_t)m->key_count * sizeof(char *));
-
+  /* ⚠️ 这里**不许**按头里声明的 `key_count` 预先分配：那是个文件说了算的数，
+   * 而「这本词典到底有多少键」只有**真从词块里读出来**才算数（同一个坏文件把声明放大
+   * 一万倍，按声明值分配就会去要几十兆、几百兆）。所以按需翻倍增长，每次增长都过同一套
+   * 索引预算；`key_count` 只当**上界**用（声明之外的多余键仍然丢掉，与原来同一条约定）。 */
+  char **keys = NULL;
+  int64_t cap = 0;
   int64_t n = 0;
   int ok = 1;
 
@@ -1744,12 +1998,31 @@ int dsh_mdx_list_keys(dsh_mdx *m, char ***out_keys, int64_t *out_count) {
       break;
     }
     for (int64_t i = 0; i < block_count; i++) {
-      if (n < m->key_count) {
-        keys[n++] = block_keys[i];
-      } else {
+      if (n >= m->key_count) {
         /* 声明数之外的多余键：丢掉（与解析那一侧的容错同一条约定）*/
         dsh_release(block_keys[i]);
+        continue;
       }
+      if (n == cap) {
+        /* 起始 64 条；之后翻倍，但**封顶在声明数**上（不多要，声明数本来就是个上界） */
+        int64_t bigger = (cap == 0) ? 64 : cap * 2;
+        if (bigger > m->key_count) bigger = m->key_count;
+        if (!index_budget_ok("键名数组", bigger, sizeof(char *))) {
+          ok = 0;
+          break;
+        }
+        char **grown = (char **)dsh_mem_alloc((size_t)bigger * sizeof(char *));
+        if (grown == NULL) {
+          dsh_set_last_error("内存不足：键名数组需要 %lld 项", (long long)bigger);
+          ok = 0;
+          break;
+        }
+        if (n > 0) memcpy(grown, keys, (size_t)n * sizeof(char *));
+        if (keys != NULL) dsh_release(keys);
+        keys = grown;
+        cap = bigger;
+      }
+      keys[n++] = block_keys[i];
     }
     if (block_keys != NULL) dsh_release(block_keys);
   }

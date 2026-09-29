@@ -1,10 +1,10 @@
 /**
- * 0.2.0 前端构建：`web/src/**` → `web/dist/*.js`。
+ * 前端构建：`web/src/**` → `web/dist/*.js`。
  *
  * 与 0.1.3 的 `build.mjs` 同一个思路（一个 esbuild 调用，不引 electron-vite 那套）：
  * WebView2 版没有"渲染进程"，前端就是一组静态资源，构建链越短越不容易出问题。
  *
- * ⚠️ **产物不嵌进 exe**。0.2.0 这一版是"壳从根目录读"（见 `shell/Lookup.Host/ShellAssets.cs`
+ * ⚠️ **产物不嵌进 exe**。这一版是"壳从根目录读"（见 `shell/Lookup.Host/ShellAssets.cs`
  *    顶上那段）：开发时改前端不用重编 C#，而且这一层能被 直接驱动。
  *    所以这里打完就完事 —— 不像 0.1.3 那样还得 `build.ps1` 把 dist 嵌进去。
  */

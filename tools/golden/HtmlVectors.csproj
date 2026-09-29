@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    HtmlVectors：跑 **0.1.3 的参考实现**（仓库内冻结副本
+    `reference/0.1.3-parser/src/Dictionary/HtmlUtils.cs`）把一批 HTML
+    输入的处理结果吐成 C 头文件，给 C 内核的 `dsh_html_*` 做**标准答案文件对照测试**。
+
+    与 GoldenDump 同一个模式：net48（与主程序一致）、把仓库内那份只读参考源码
+    **链进来**不复制、只链这一个文件（HtmlUtils 没有任何应用层依赖）。
+
+    为什么这条也要标准答案文件：`HtmlUtils` 里是 8 条 .NET 正则，而 C 版是把它们手写成
+    扫描器 —— "手写的正则"正是最容易"99% 一样、1% 悄悄不一样"的东西（字面量 `<`
+    与实体 `&lt;` 的先后、空行的收敛档数、Unicode 空白的 trim 范围）。
+    内核自己的测试只能证明"我按我理解的写对了"，证明不了"与参考实现逐字节一致"。
+
+    用法：`powershell -File tools/make-html-vectors.ps1`
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>HtmlVectors</AssemblyName>
+    <RootNamespace>Lookup.Tools.HtmlVectors</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+    <NoWarn>$(NoWarn);CS0649</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="html-vectors.cs" />
+    <!-- 参考实现：只链这一个文件（它是纯字符串工具，不依赖 Models / Newtonsoft） -->
+    <Compile Include="../../reference/0.1.3-parser/src/Dictionary/HtmlUtils.cs" />
+  </ItemGroup>
+
+</Project>

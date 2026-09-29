@@ -977,6 +977,42 @@ function renderDoc(spec) {
 
 function rel(p) { return path.relative(ROOT, p).replace(/\\/g, '/') }
 
+/**
+ * 把差异**摆在报错里**（`--check` 红的时候用）。
+ *
+ * 为什么值得写这二十来行：`--check` 原先只报"旧 22770 字符 / 新 22769 字符"，看不出**差在哪儿**
+ * —— 撞上红的人于是只有两条路：当成噪声忽略，或者**直接手改产物去凑绿**。
+ * 后者正是这份检查要防的事故形态：2026-09 有过一次"全树注释清扫"把产物改坏、
+ * 而生成器没动，两边就此长期不一致（见 CHANGELOG 0.2.1 的"接口定义检查不再失败"一条）。
+ * 所以报错必须让人一眼看出**该重新生成，还是该改接口定义**。
+ *
+ * 算差异**不逐行对齐**（那会把"中间插了一行"报成一整片全变），而是先吃掉**公共前缀**与
+ * **公共后缀**，只报中间那一段 —— 这正是生成物最常见的变化形状。
+ */
+function describeDiff(oldText, newText, max = 10) {
+  if (oldText === null) return ['（产物文件不存在）→ 跑 `node tools/gen-bindings.mjs` 生成它']
+  const a = oldText.split('\n')
+  const b = newText.split('\n')
+  let lo = 0
+  while (lo < a.length && lo < b.length && a[lo] === b[lo]) lo++
+  let hiA = a.length - 1
+  let hiB = b.length - 1
+  while (hiA >= lo && hiB >= lo && a[hiA] === b[hiB]) { hiA--; hiB-- }
+  if (lo > hiA && lo > hiB) return ['（只有换行符差异）']
+
+  const out = []
+  const gone = a.slice(lo, hiA + 1)
+  const added = b.slice(lo, hiB + 1)
+  out.push(`第 ${lo + 1} 行起：产物有 ${gone.length} 行、接口定义生成出来的是 ${added.length} 行`)
+  const show = (sign, lines) => {
+    for (const line of lines.slice(0, max)) out.push(`  ${sign} ${line}`)
+    if (lines.length > max) out.push(`  ${sign} …（这一侧另有 ${lines.length - max} 行没列）`)
+  }
+  show('-', gone)
+  show('+', added)
+  return out
+}
+
 function writeOrCheck(file, content) {
   const abs = path.join(ROOT, file)
   const old = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : null
@@ -984,7 +1020,16 @@ function writeOrCheck(file, content) {
   if (CHECK) {
     if (!same) {
       const detail = old === null ? '文件不存在' : `内容不一致（旧 ${old.length} 字符 / 新 ${content.length} 字符）`
-      err(`${file} 与接口定义不同步：${detail}`)
+      /*
+       * 整段**合成一条**报错：`fail()` 是"一条消息一行 ✗"，逐行 push 会让 diff 的每一行
+       * 都挂上一个 ✗，看着像十几处错误，其实只有一处。续行靠 `\n    ` 对齐。
+       */
+      err([
+        `${file} 与接口定义不同步：${detail}`,
+        ...describeDiff(old, content),
+        '→ 修法：跑 `node tools/gen-bindings.mjs` 重新生成（**产物一律不许手改**）。',
+        '  若你认为产物才是对的，那就改 abi/lookup.abi.json 或生成器，再重新生成。'
+      ].join('\n    '))
     }
     return { file, same, bytes: Buffer.byteLength(content, 'utf8') }
   }

@@ -53,6 +53,26 @@ namespace Lookup.App
         internal readonly List<string> FrameNavigations = new List<string>();
         internal int BlockedRequests;      // 不属于两个虚拟站点、被挡回去几次
         internal readonly List<string> BlockedUrls = new List<string>();
+        /// <summary>
+        /// **不是外壳页面发来的**桥消息，被丢掉几次（2026-09 加固）。
+        ///
+        /// 为什么要有这一格：桥能做的事里有一批是"操作系统能力"（写剪贴板、挑文件、发 HTTP、
+        /// 摆窗口），所以"谁有资格调它"必须是一条**能看见的**边界，而不是"反正只有我们自己会发"。
+        /// 记下被丢掉的是**哪个来源**，是为了让验收能断言"确实挡了"，而不是只相信代码写了。
+        /// </summary>
+        internal int RejectedMessages;
+        internal readonly List<string> RejectedMessageSources = new List<string>();
+        /// <summary>
+        /// **进到 `OnWebMessage` 的桥消息一共几条**，以及每一条的来源 URI（最多记 32 条）。
+        ///
+        /// 为什么要有它：只记"被丢掉几条"证明不了任何事 —— 0 条既可能是"挡住了"，
+        /// 也可能是"那条消息**根本没送到宿主**"。这两种情况的结论完全相反，
+        /// 而验收必须分得开（第 ⑲ 节的第一次实测就是这么被绊住的：只看到 0，看不出是哪种）。
+        /// 记的是 `e.Source` 的**原样值**，好让"从 `*.dictres.invalid` 那个 frame 发来的消息
+        /// 到底长什么样、宿主看到的来源是什么"变成一条可读的实测结果。
+        /// </summary>
+        internal int MessagesSeen;
+        internal readonly List<string> MessageSources = new List<string>();
         internal readonly List<string> Failures = new List<string>();
 
         internal WebViewBridge(IntPtr engine, string webRoot, IShellHost shellHost)
@@ -195,6 +215,36 @@ namespace Lookup.App
         private void OnWebMessage(object sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
             var core = (CoreWebView2)sender;
+
+            /* 每一条都先记下来源：验收要靠它分清"拦住了"与"根本没送到"（见 MessagesSeen 那段）。 */
+            MessagesSeen++;
+            if (MessageSources.Count < 32) MessageSources.Add(e.Source ?? "(空来源)");
+
+            /*
+             * ★ **先认来源，再进路由**（2026-09 加固；代码审查点出 `Dispatch.Handle` 之前没这一步）。
+             *
+             * 桥是"操作系统能力"的入口（写剪贴板 / 挑文件 / 发 HTTP / 摆窗口），所以"谁有资格调它"
+             * 得是一条**说得清、测得出来**的边界 —— 判据就是**发送这条消息的文档在哪个源上**。
+             * 只有外壳自己的页面住在 `https://lookup.local`（见 `VirtualHost.ShellDomain`）；
+             * 词条正文与译文页住在 `*.dictres.invalid`（**另一个源**），它们的 CSP 是 `default-src 'self'`，
+             * 连 `lookup.local/bridge.js` 都取不到，本来就不该、也不能调桥。
+             *
+             * ⚠️ 说清这一条**是什么、不是什么**：它是**纵深防御**（万一以后哪个页面把 bridge.js
+             * 带进了词典域，或者多开了一扇没想清楚的窗，这里会当场挡住并留下证据），
+             * **不是** F1 那条的修法。F1 的问题出在**同一个 JS 环境里的脚本**伪造消息 ——
+             * 那种伪造的来源就是可信的正文框窗口本身，**来源校验对它一点用都没有**；
+             * 那条边界只能靠"凡外发 / 计费的动作只由可信父页面上的真实点击发起"（见前端
+             * `renderEntryChips` 与 `tools/check-entry-auth.mjs`）。两件事别混成一件。
+             */
+            string shellPath;
+            if (!VirtualHost.IsShellUrl(e.Source, out shellPath))
+            {
+                RejectedMessages++;
+                if (RejectedMessageSources.Count < 16) RejectedMessageSources.Add(e.Source ?? "(空来源)");
+                Note("丢掉一条不是外壳页面发来的桥消息，来源：" + (e.Source ?? "(空来源)"));
+                return;
+            }
+
             string reply;
             try
             {

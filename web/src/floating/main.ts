@@ -38,6 +38,19 @@ const HISTORY_ROW = 42
 const HEAD_H = 42
 /** 正文模式下 panel-body 的上下 padding */
 const CONTENT_PAD = 16
+/**
+ * 出路按钮那一排占的高度（DIP）。**这个数必须自己补进面板高度里。**
+ *
+ * 为什么（别把它当魔法数字删掉）：按钮原先长在**词条正文里**，于是 `reportHeight()` 量的是
+ * 整篇文档、那一排的高度**自然算进去了**。2026-09 把它们搬到宿主页之后（授权边界，见
+ * `renderEntryChips`），正文文档量不到它们了 —— 不补这一笔，面板就会比内容矮一排，
+ * 而 `.reader` 是 `overflow: hidden`：正文底部（正是那句话和按钮底下那点内容）会被裁掉。
+ *
+ * 取值 = `.entry-chips` 的实际高度：`padding 8 + 8` + 按钮 `5 + 5` padding + 13px 字 ×1.5 行高
+ * （≈19.5）+ 1px 下边框 ≈ 38。⚠️ 改 `web/styles/floating.css` 里 `.entry-chips` /
+ * `.entry-chip` 的 padding / font-size / line-height 时，**这个数要跟着改**。
+ */
+const ENTRY_CHIPS_H = 38
 const EMPTY_H = 156
 /* 内核常量一律读 abi.ts，禁止在这里抄字面量（抄了就会与内核漂移） */
 const MAX_LIST_ROWS = DshConstants.maxListRows
@@ -141,7 +154,12 @@ const dom = {
   /** 正文框里的反馈条（`.reader` 的子元素）：选中查词"查不到 / 就是当前词条"时说在这儿 */
   readerToast: el<HTMLDivElement>('readerToast'),
   /* 兜底通道的解释行（这一页怎么来的）—— 宿主自己画，正文在跨域 iframe 里读不到 */
-  readerVia: el<HTMLDivElement>('readerVia')
+  readerVia: el<HTMLDivElement>('readerVia'),
+  /**
+   * 出路按钮（「再问一遍」/「翻译这个词」）的容器 —— **宿主页自己的控件**，
+   * 不再送进词条正文。为什么必须长在这一侧，见 `renderEntryChips` 顶上那段。
+   */
+  entryChips: el<HTMLDivElement>('entryChips')
 }
 
 /* ==========================================================================
@@ -164,6 +182,24 @@ interface State {
   entry: EntryPayload | null
   /** 正文 iframe 上报的实际文档高度 */
   contentHeight: number
+  /**
+   * 正文框**最后上报过**的滚动位置。
+   *
+   * ⚠️ 宿主读不到跨域 iframe 的 scrollTop —— 这个值只能等正文自己报，而它只在"选区变了 /
+   * 点了 entry:// 链接"那几处报（见 `entry_assets.h` 里 `reportSelection` 的 scrollY）。
+   *
+   * 为什么出路按钮长到宿主页上之后**还得留着这一笔**：那些按钮压返回栈时要用"跳走之前
+   * 这篇正文读到哪儿了"，而那个数字只有正文知道（`translateWord` 的 `leavingScrollY`）。
+   * 词条一换就清零（见 `applyPayload`）。
+   */
+  entryScrollY: number
+  /**
+   * 正文框顶部那排出路按钮现在摆着没有。
+   *
+   * 为什么要有这个字段：它占的高度**必须算进面板高度**，而按钮住在宿主页上、
+   * 正文文档量不到它（见 `ENTRY_CHIPS_H`）。由 `renderEntryChips` 维护，`rawPanelHeight()` 读。
+   */
+  chipsVisible: boolean
   history: HistoryItem[]
   historyTotal: number
   historyLoading: boolean
@@ -279,6 +315,8 @@ const state: State = {
   currentDictId: null,
   entry: null,
   contentHeight: CONTENT_FALLBACK,
+  entryScrollY: 0,
+  chipsVisible: false,
   history: [],
   historyTotal: 0,
   historyLoading: false,
@@ -396,7 +434,12 @@ function rawPanelHeight(): number {
     }
     case 'content': {
       const content = clamp(state.contentHeight, CONTENT_MIN, maxContentHeight())
-      return PANEL_CHROME + HEAD_H + CONTENT_PAD + content
+      /*
+       * 出路按钮那一排要**单独加**：它住在宿主页上，正文文档的高度里没有它
+       * （理由与取值见 `ENTRY_CHIPS_H` 那段）。没摆按钮时它不占高度，所以是有条件地加。
+       */
+      const chips = state.chipsVisible ? ENTRY_CHIPS_H : 0
+      return PANEL_CHROME + HEAD_H + CONTENT_PAD + content + chips
     }
   }
   return 0
@@ -1004,7 +1047,7 @@ function onReaderToastClick(event: Event): void {
   // 提示条自己立刻收走：一次点击只该有一次反馈，剩下的交给它引起的那个动作
   hideReaderToast()
   if (action === 'recheck' && word) {
-    void onEntryChip('recheck', word, 0)
+    void onEntryChip('recheck', word)
     return
   }
   if (action === 'lookup' && word) {
@@ -1503,14 +1546,15 @@ function entryLookupDictId(): string | undefined {
 }
 
 /**
- * 算出"这一页还能怎么办"，并把按钮送进词条正文。它们**只服务终态页**（`via === 'terminal'`：
+ * 算出"这一页还能怎么办"，并把按钮画在**宿主页**上（怎么画、为什么必须画在这一侧：见
+ * `renderEntryChips`）。它们**只服务终态页**（`via === 'terminal'`：
  * 当前词典、别的词典、机器翻译三种都试过且翻译用不上）：
  *   · 「再问一遍」—— 有词典**没问完**（超预算 / 报错）时给。⚠️ **有它才敢说"别的词典里也没有"**；
  *   · 「翻译这个词」—— 用户**自己关掉了自动翻译**时给（那是"他不让它自动"，不是"他不要"）。
  * ⚠️ 「借词典查」不再有：借查已经是通道里的自动一步，不该再让用户点一下做同一件事。
  * 其余四种（总开关关 / 没 Key / 语种不支持 / 翻译失败）**不给按钮**：点了也没用，该去改设置。
  */
-async function refreshEntryChips(): Promise<void> {
+function refreshEntryChips(): void {
   const entry = state.entry
   const word = (entry?.query || entry?.keyText || '').trim()
   const items: { action: string; label: string; word: string; hint?: string }[] = []
@@ -1535,12 +1579,71 @@ async function refreshEntryChips(): Promise<void> {
   // 换过词条了？这次算出来的东西就不作数了（别把上一轮的出路贴到新词条上）
   if (state.entry !== entry) return
 
-  dom.entryFrame.contentWindow?.postMessage({ source: 'lookup-host', type: 'chips', items }, '*')
+  renderEntryChips(items)
+}
+
+/**
+ * 把出路按钮画在**宿主页**上（`#entryChips`，紧贴着 `.reader-via` 那行解释）。
+ *
+ * ★ **为什么按钮必须长在宿主页、不许再送进词条正文**（P1 / 安全审查 F1，2026-09）：
+ * 词条正文住在 `sandbox="allow-scripts"` 的**跨域 iframe** 里，而**词典自带的脚本与桥接脚本
+ * 跑在同一个 JS 环境**里 —— 中间没有任何可信边界。按钮长在正文里的时候，词典脚本只要自己
+ * postMessage 一条 `{source:'lookup-entry', type:'chip', action:'translate', word:'它指定的文本'}`，
+ * 就能让宿主把**它挑的文本**发给收费的翻译接口：用户看到的是一次正常翻译，账单和出去的字
+ * 却都是词典决定的；换个词还能绕开按文本缓存。
+ *
+ * 所以从这一版起划一条硬边界：**凡是会外发内容或计费的动作，只能由可信父页面上的真实点击发起**。
+ * 正文框从此只上报低权限事件（滚动 / 高度 / 选区 / 空点击 / 播放自带音频 / entry:// 跳转）。
+ * ⚠️ 别用"给正文发一个令牌再收回来"来替代它：令牌和用它的人同处一个 JS 环境，
+ * 词典脚本读得到，那等于没发。也**别拿 `Event.isTrusted` 当用户点击的授权**。
+ *
+ * 顺带一处变化（有意为之）：按钮原来长在正文文档末尾，词条一长就得先滚到底才看得见；
+ * 现在它跟在解释行下面、不用滚。这一排**不占正文高度**，所以也不会把词条挤掉一截。
+ */
+function renderEntryChips(items: { action: string; label: string; word: string; hint?: string }[]): void {
+  dom.entryChips.replaceChildren()
+
+  const wasVisible = state.chipsVisible
+  state.chipsVisible = items.length > 0
+
+  if (items.length === 0) {
+    dom.entryChips.hidden = true
+    /*
+     * 记在 DOM 上：自动化验证要断言"到底给了几个出路、分别是什么"。
+     * ⚠️ 这一笔**不能删**：它是出路按钮唯一的检查标准（按钮自己也在宿主页上了，
+     * 但那是控件形状，不是"算出来的出路是什么"）。
+     */
+    dom.reader.dataset.chips = ''
+  } else {
+    for (const item of items) {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'entry-chip'
+      button.textContent = item.label
+      button.dataset.chipAction = item.action
+      button.title = item.hint || item.label
+      /*
+       * 用 click 而不是正文里那排的 mousedown：那一条是为了"点击时顺手读文档的 scrollY"，
+       * 而这里读不到也不需要（按下即走，选区在另一个文档里，不会因为 mouseup 前失焦而乱）。
+       */
+      button.addEventListener('click', () => {
+        void onEntryChip(item.action, item.word)
+      })
+      dom.entryChips.appendChild(button)
+    }
+    dom.entryChips.hidden = false
+    dom.reader.dataset.chips = items.map((item) => item.action).join(',')
+  }
+
   /*
-   * 记在 DOM 上：自动化验证要断言"到底给了几个出路、分别是什么"。
-   * 钉的是**这次算出来的东西**，不是"界面上有几个按钮"——按钮在跨域 iframe 里，宿主读不到。
+   * 这一排占的高度要重新算进面板里（见 `ENTRY_CHIPS_H`）。
+   *
+   * ⚠️ 必须在这里主动重排，不能指望别处顺手调：正文文档的 `load` 会先报一次高度
+   * （那时按钮还没建出来），宿主的 `load` 监听才轮到 `refreshEntryChips` ——
+   * 顺序反了的话，这一排就**只占地方不加高度**，正文底部被裁掉。
+   * 只有"摆着 ↔ 不摆"真的变了才重排：没变还调一次是白跑一趟布局。
    */
-  dom.reader.dataset.chips = items.map((item) => item.action).join(',')
+  if (wasVisible !== state.chipsVisible && state.mode === 'content') pushLayout()
 }
 
 /**
@@ -1578,8 +1681,8 @@ async function replayHistoryItem(item: HistoryItem): Promise<void> {
   await lookup(word, { source: 'history', dictId: item.dictId })
 }
 
-/** 词条正文里的「出路」按钮被按下了（消息由 EntryDocument 的桥接脚本发来） */
-async function onEntryChip(action: string, word: string, scrollY: number): Promise<void> {
+/** 词条正文里的「出路」按钮被按下了 —— **按钮长在宿主页上**，见 `renderEntryChips` */
+async function onEntryChip(action: string, word: string): Promise<void> {
   const target = (word || '').trim()
   if (!target) return
 
@@ -1611,7 +1714,7 @@ async function onEntryChip(action: string, word: string, scrollY: number): Promi
   }
 
   if (action === 'translate') {
-    await translateWord(target, scrollY)
+    await translateWord(target, state.entryScrollY)
   }
 }
 
@@ -1678,7 +1781,7 @@ async function renderTranslation(word: string, restoreScrollY: number | null = n
  * 翻译一个词/一句话，并把**译文当成一个词条**显示在正文框里（§B6 ③）。
  *
  * 压栈：从译文点「返回」能回到刚才那一页 —— 译文享受和真词条一样的待遇
- * （朗读 / 复制 / 返回栈），这是指导文档  里那条 标准的全部内容。
+ * （朗读 / 复制 / 返回栈），这是 `docs/design/查词兜底通道与历史记录开发指导.md` 里那条标准的全部内容。
  *
  * 失败时**把刚压的那一层弹掉**：否则用户点一下"翻译"、失败了、再点返回，
  * 会退到一个"还是刚才那个词"的空层上（返回栈深度对不上，看着像坏了）。
@@ -1717,6 +1820,17 @@ function applyPayload(payload: EntryPayload): void {
    */
   state.entryDictId = payload.dictId || state.entryDictId || state.currentDictId
   state.contentHeight = CONTENT_FALLBACK
+  // 换词条 = 滚动位置归零（它是上一篇正文的数字，留给下一篇用就是错的）
+  state.entryScrollY = 0
+  /*
+   * 上一页那排出路按钮**立刻收走**：它们说的是**上一个词**的事。
+   *
+   * ⚠️ 搬走之后这一步不能省。按钮原先长在词条正文里，新文档一装旧按钮自然就没了；
+   * 现在它们住在宿主页上，不收就会**一直挂着上一个词的标签**（"翻译「serendipity」"），
+   * 而且点了真的会去翻那个词 —— 用户看到的词条和按钮说的词对不上。
+   * 新的那一排等文档装好由 `refreshEntryChips` 算出来（`state.chipsVisible` 跟着一起改）。
+   */
+  renderEntryChips([])
   state.mode = 'content'
   state.activeIndex = -1
 
@@ -2536,8 +2650,9 @@ function hasSelection(): boolean {
  * 选区处理全都自动正确（菜单项右侧本来就写着 `Ctrl+X` 那几行快捷键提示，
  * 改完之后那个提示从"效果大致相同"变成**字面属实**）。
  *
- * 依据与实测（`docs/输入框右键菜单改走原生编辑命令.md`，诊断
- *  --edit-commands`）：
+ * 依据与实测（`docs/design/输入框右键菜单改走原生编辑命令.md`；下面这些数字当初是用
+ * CDP 诊断脚本量的 —— ⚠️ 量它们用的那个 `--edit-commands` 子命令**本仓库还没有**
+ * （`tools/probe-page.mjs` 里没有它，见 `AGENTS.md` §七），所以这几条目前**没有 C 级手段复现**）：
  *   · `insertText` **确实进撤销栈**：值 AAA → insertText 'BBB' → `undo` → 回到 **AAA**；
  *     同一段流程改用 `value =` 赋值 → `undo` 之后**还是 BBB**（这就是那个缺陷本身）；
  *   · 编辑命令**会抛 `input` 事件**（insertText 一次、undo 再一次），
@@ -2648,7 +2763,9 @@ function showTextMenu(anchor: { dx: number; dy: number }): void {
    * ⚠️ 别把它跟**「复制释义」那个按钮**的 Ctrl+C 混为一谈：那一条才是**从来没实现过**的
    * 假快捷键（把整条释义复制进剪贴板没有任何加速键），所以 `#entryCopy` 的提示已经从
    * 「复制释义（Ctrl+C）」精简成「复制释义」，**那个按钮的提示里不许再出现 Ctrl**
-   * （见 `floating.html` 的注释与  的"删掉的东西不许回来"）。
+   * （见 `floating.html` 里 `#entryCopy` 那条注释）。
+   * ⚠️ **这一条没有自动检查**：A 级检查器 `tools/ui-static-check.mjs` 只钉了「页脚」与
+   * 「全局热键」两处"删掉的东西不许回来"，**没钉这句提示文案** —— 谁要改它，责任在自己身上。
    * 一处真、一处假：**这里的四条要保持存在**，别再按"假快捷键"的约定删一次
    **/
   openMenu(
@@ -3029,7 +3146,7 @@ function showEntrySelectionToolbar(): void {
  *
  * ⚠️ **2026-09 约定变了**：以前"查不到"就到此为止（只弹一句提示），现在它**要走进兜底通道**
  * （`origin = 'selection'`）—— 当前词典没有就问别的词典，别本没有就自动翻译，
- * 都不行才在正文框底部给一条提示。依据 `docs/查词兜底通道与历史记录开发指导.md`  C 那六行，
+ * 都不行才在正文框底部给一条提示。依据 `docs/design/查词兜底通道与历史记录开发指导.md`  C 那六行，
  * 以及用户那句话「总之每次查询最后一定给出一个结果」。
  */
 /*
@@ -3807,11 +3924,11 @@ function setupReaderEvents(): void {
     /*
      * 最后再算"这个词没查到的话，还能走哪两条路"。
      *
-     * 必须等文档装好、而且放在最后：那一排按钮是**送进文档里**渲染的
-     * （理由见 EntryDocument 的 renderChips），文档还没起来时 postMessage 会石沉大海。
-     * 它顺带也会让文档重新量一次高度 —— 按钮多占的那一行得算进面板高度里。
+     * ⚠️ **不再**是"送进文档里渲染"了：按钮由宿主页自己画（`renderEntryChips` 顶上写着为什么
+     * 必须这样）。所以这里也不再需要等文档起来、不用管正文能不能收到 postMessage ——
+     * 留在 `load` 里只是因为"换词条之后才谈得上算什么出路"，位置仍然要在最后。
      */
-    void refreshEntryChips()
+    refreshEntryChips()
   })
 
   window.addEventListener('message', (event) => {
@@ -3825,15 +3942,35 @@ function setupReaderEvents(): void {
           url?: string
           value?: number
           atTop?: boolean
-          /** 词条正文现读的滚动位置：链接点击、选区内报、出路按钮都会带（宿主读不到 iframe 的 scrollTop） */
+          /** 词条正文现读的滚动位置：链接点击与选区内报都会带（宿主读不到 iframe 的 scrollTop） */
           scrollY?: number
-          /** 出路按钮的动作（borrow / translate）与它带的词 */
-          action?: string
           /** `dead-click` 的原因码：no-href / no-anchor / nothing-happened（文案在 deadClickText） */
           reason?: string
         }
       | undefined
+    /*
+     * ★ 来源校验必须在最前面。
+     *
+     * `data.source === 'lookup-entry'` 是**发送方自己填的字符串**，谁都能写，它没有认证作用；
+     * 真正能证明"这条消息出自正文框"的只有 `event.source`（浏览器给的 WindowProxy，
+     * 发送方改不了）。所以先比它，别再把那两个字串当身份。
+     *
+     * ⚠️ 但要说清它**证明了什么、没证明什么**：它挡住的是"别的窗口冒充正文框"（顶层页、
+     * 别的 iframe、随便哪个拿到本窗口引用的脚本）。它**挡不住**"正文框里**词典自带的脚本**
+     * 冒充桥接脚本" —— 那两者跑在同一个 JS 环境里，中间本来就没有可信边界。
+     * 所以真正的边界不在这儿，而在"**凡外发/计费的动作只由父页面上的真实点击发起**"
+     * （见 `renderEntryChips`），以及下面**根本不处理 `type === 'chip'`**。
+     */
+    if (event.source !== dom.entryFrame.contentWindow) return
     if (!data || data.source !== 'lookup-entry') return
+
+    /*
+     * 正文报上来的滚动位置统一记一笔：宿主读不到跨域 iframe 的 scrollTop，而"跳走之前
+     * 这篇读到哪儿了"要进返回栈。⚠️ 只在**它自己报**的时候更新（不能拿它当"当前位置"用）。
+     */
+    if (typeof data.scrollY === 'number' && Number.isFinite(data.scrollY)) {
+      state.entryScrollY = Math.max(0, Math.round(data.scrollY))
+    }
 
     if (data.type === 'lookup' && typeof data.word === 'string') {
       /*
@@ -3859,18 +3996,15 @@ function setupReaderEvents(): void {
       return
     }
     /*
-     * 词条正文里那排「出路」按钮（用《X》查一次 / 翻译）被按下了。
-     * 按钮是宿主送过去的（见 refreshEntryChips），动作在这里执行 ——
-     * 于是"要查哪个词、去哪本词典查、要不要翻译"这些策略仍然只写在宿主这一处。
+     * ★ 这里**故意没有** `type === 'chip'` 这一支。
+     *
+     * 以前有：出路按钮长在词条正文里，按下去就 postMessage 回来，宿主照它执行。
+     * 那条路是一条**伪造得出授权**的路 —— 词典自带脚本能直接发同一条消息，让宿主把
+     * 它指定的文本发给收费翻译接口（安全审查 F1，P1）。既然按钮已经改由宿主页自己画
+     * （`renderEntryChips`），正文那边就**一个动作都换不出来**了：伪造的消息落到这里
+     * 没有任何分支会接住它。
+     * ⚠️ **别以"反正把 message 挡住了"为理由把它加回来** —— 它挡不住同一环境里的词典脚本。
      */
-    if (data.type === 'chip') {
-      void onEntryChip(
-        typeof data.action === 'string' ? data.action : '',
-        typeof data.word === 'string' ? data.word : '',
-        typeof data.scrollY === 'number' ? data.scrollY : 0
-      )
-      return
-    }
     /*
      * 词条里点了一下、**可什么都没发生**（词典自己写的链接没有 href / 锚点找不到 /
      * 那个「看着可点」的东西没人接住）。参考实现时代这里是完全不报错的，用户为此报过三次

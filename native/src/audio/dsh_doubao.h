@@ -7,7 +7,7 @@
  * 协议：POST .../api/v3/tts/unidirectional/sse，头带 X-Api-Key 与 X-Api-Resource-Id
  *   （**必须与音色配套**）；体是 {user, req_params:{text, speaker, audio_params, additions}}；
  *   回包是 SSE 的 `data:` 行 `{"code":0,"data":"<base64>"}`，把每行 base64 顺序拼成 mp3。
- *   `code` 为 0 / 20000000 = 成功。完整字段见 `docs/豆包语音合成接入方案.md`。
+ *   `code` 为 0 / 20000000 = 成功。完整字段见 `docs/design/豆包语音合成接入方案.md`。
  *
  * 三条**实测得来的硬约定**（不照做就踩坑）：
  *   ① **不传 `explicit_language`** —— 它的语义是「**只念**这个语种」而不是「提示语种」，
