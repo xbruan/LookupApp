@@ -113,6 +113,12 @@ jobs:
       - name: A′ 级 · 出路按钮的授权边界（词典脚本伪造不出翻译动作）
         run: node tools/check-entry-auth.mjs
 
+      # 包里有两处 BSD 3-Clause 的东西（内嵌的 libspeex、随包分发的 WebView2 DLL），
+      # 按它的二进制再分发条款，随包的文档里必须带上版权声明、条件与免责声明 ——
+      # 也就是说"包里带了几份许可文件、它们叫什么"是**硬要求**，不能靠记性。
+      - name: A 级 · 许可与第三方声明（LICENSE 是纯 MIT；随包清单与 package.ps1 双向一致）
+        run: node tools/check-licenses.mjs
+
       - name: 工作区指令预算（AGENTS.md 不许悄悄顶穿）
         run: node tools/instruction-budget.mjs
 

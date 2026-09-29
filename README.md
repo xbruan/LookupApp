@@ -161,5 +161,7 @@ native/src/**（C11 内核：解析 / 查词通道 / 设置 / 历史 / 发音 / 
 
 ## 许可
 
-本项目以 **MIT 许可**发布，见 [`LICENSE`](LICENSE)。第三方组件与它们的许可见
-[`THIRD-PARTY.md`](THIRD-PARTY.md)（其中 libspeex 1.2.1 是 BSD 3-Clause，只用了它的解码路径）。
+本项目以 **MIT 许可**发布，见 [`LICENSE`](LICENSE) —— 那个文件里**只有 MIT 全文**，
+第三方的东西一律不往里塞（它同时会被原样搬进便携包，混进去就说不清哪段管什么了）。
+第三方组件与它们的许可见 [`THIRD-PARTY.md`](THIRD-PARTY.md)：仓库里那处是 libspeex 1.2.1
+（BSD 3-Clause，只用了它的解码路径），便携包里还随包分发微软的 WebView2 组件（同样 BSD 3-Clause）。

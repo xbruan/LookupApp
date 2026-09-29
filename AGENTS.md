@@ -81,6 +81,7 @@ node tools/gen-bindings.mjs --check    # A 级：产物与接口定义一致（�
 | 文案 / 标签 / 颜色值 / 注释 | 改了 `web/` 就先重打前端（`node web/build.mjs`） | 跑完整测试 |
 | 纯静态 / 决定类（写死的常量、该有文字的地方、图标结构、删掉的东西不许回来） | `node tools/gen-bindings.mjs --check` **与** `node tools/ui-static-check.mjs` | 为它跑完整测试 |
 | 授权边界 / 消息分派（谁有权换出"外发、计费"的动作） | `node tools/check-entry-auth.mjs` | 为它跑完整测试 |
+| 许可 / 第三方声明（`LICENSE`、`THIRD-PARTY.md`、随包许可清单、打包脚本里那一段） | `node tools/check-licenses.mjs` | 为它跑完整测试 |
 | 纯逻辑（判语种、文本清洗、音频引用提取、音源排序、设置规范化、缓存键、解析器 / 编解码…） | 只调该函数 / 模块的诊断脚本（`native/tests/test_*.c`） | 跑完整测试 |
 | 单个已知交互行为 | 用 `tools/probe-page.mjs` 做一次定向观察（CDP） | 跑完整测试 |
 | 跨模块 / 窗口几何 / 焦点 / 启动路径 / 渲染管线 | **完整测试**：`tools/test-shell-app.ps1` | 不做完整测试就交付 |
@@ -168,7 +169,14 @@ node tools/gen-bindings.mjs --check    # A 级：产物与接口定义一致（�
     **被 PowerShell 当成引号**的字符，于是**整个脚本语法错误、一行都跑不了**。
     实测：GitHub runner 上 13 个 `tools/*.ps1` 各有 3–24 处语法错误 —— 整套 Windows 侧工具链
     在非 UTF-8 代码页的机器上是坏的。由 `node tools/check-encoding.mjs` 机械钉住（CI 里也跑）。
-16. 收尾汇报里**必须写明**：本轮跑了几次完整测试、每次是为了验什么。
+16. ★ **`LICENSE` 里只有 MIT 全文（纯 ASCII、只许换版权那一行）；第三方的东西一律进
+    `THIRD-PARTY.md`。** 许可证正文被塞进别的内容之后，下游的许可识别工具与打包者会把它
+    当成"MIT 的改写版"处理；而同一件事写成两份，必然烂掉一份。
+    **随包的许可文件只有两处提到它**：`tools/package.ps1` 第 ④ 步（唯一搬的地方）与
+    `THIRD-PARTY.md` 开头那张"仓库里叫 / 包里叫"的对照表（唯一说明的地方）——
+    **改一处必须改另一处**。`THIRD-PARTY.md` 会被**原样搬进包当 `.txt`**，所以那里
+    **不许写仓库相对链接**（包里是死链）。以上全部由 `node tools/check-licenses.mjs` 钉住。
+17. 收尾汇报里**必须写明**：本轮跑了几次完整测试、每次是为了验什么。
 
 ---
 
@@ -180,6 +188,7 @@ node tools/gen-bindings.mjs --check     # 接口定义与四份产物一致
 node tools/ui-static-check.mjs          # 界面结构：页签 / 控件归属 / 删掉的东西不许回来 /
                                         #   页面调的桥方法名壳认不认
 node tools/check-entry-auth.mjs         # 授权边界：词典脚本伪造不出一条「翻译」动作
+node tools/check-licenses.mjs           # 许可：LICENSE 是纯 MIT；随包许可清单与清单表一致
 node tools/instruction-budget.mjs       # 改了 AGENTS.md 之后必跑
 
 # ── 生成 / 构建 ────────────────────────────────────────────────────────
@@ -290,6 +299,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\test-shell-app.ps1 > l
 - [ ] 本轮新增的测试项各自属于哪一级？有没有本该是 A/A′/B/C 却被塞进完整测试的？
 - [ ] 改过 `AGENTS.md` 吗？→ **跑 `node tools/instruction-budget.mjs`**
 - [ ] 改过 `abi/lookup.abi.json` 吗？→ 跑了 `gen-bindings.mjs` 与 `--check` 吗？
+- [ ] 改过 `LICENSE` / `THIRD-PARTY.md` / 打包脚本里那份随包许可清单吗？→ **跑 `node tools/check-licenses.mjs`**
 - [ ] 这轮**删掉 / 换掉过功能行为**吗？→ **grep 一遍所有描述它的文档**（按功能名与符号搜）
 - [ ] 这轮有没有新建 / 复活"现状 / 待办 / 进度 / 当前实测结果"这类常驻文档？→ **不许**
 

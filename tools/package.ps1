@@ -113,13 +113,18 @@ foreach ($f in @('floating.html', 'manager.html', 'tray-menu.html', 'bridge.js')
 Copy-Item (Join-Path $webRoot 'dist/*.js') (Join-Path $webStage 'dist')
 Copy-Item (Join-Path $webRoot 'styles/*.css') (Join-Path $webStage 'styles')
 
-# 许可与第三方声明：**必须随包**（2026-09 补）。`dsh_lookup.dll` 里内嵌了 libspeex 的解码路径，
-# 而 BSD 3-Clause 要求再分发时**保留版权声明、条件与免责声明** —— 包里少这几份就不是"没写全"，
-# 而是**违反它自己的许可**。三份都摆到包根上（Windows 上双击就能看）。
+# 许可与第三方声明：**必须随包**。这个包里有两处不是我们写的东西 ——
+# `dsh_lookup.dll` 里内嵌的 libspeex 解码路径，以及随包分发的三个 WebView2 DLL ——
+# 两者都是 **BSD 3-Clause**，而它对**二进制再分发**的要求是"随包的文档里必须带上版权声明、
+# 条件与免责声明"：包里少这几份就不是"没写全"，而是**违反它自己的许可**。
+# 五份都摆到包根上（Windows 上双击就能看）。
+# ⚠️ 加文件进来必须同步 `THIRD-PARTY.md` 开头那张对照表 —— `node tools/check-licenses.mjs` 盯着这件事。
 foreach ($lic in @(
-    @{ From = (Join-Path $root 'LICENSE');        To = 'LICENSE.txt' },
-    @{ From = (Join-Path $root 'THIRD-PARTY.md'); To = 'THIRD-PARTY.txt' },
-    @{ From = (Join-Path $root 'native/vendor/speex/COPYING'); To = 'libspeex-COPYING.txt' }
+    @{ From = (Join-Path $root 'LICENSE');                            To = 'LICENSE.txt' },
+    @{ From = (Join-Path $root 'THIRD-PARTY.md');                     To = 'THIRD-PARTY.txt' },
+    @{ From = (Join-Path $root 'native/vendor/speex/COPYING');        To = 'libspeex-COPYING.txt' },
+    @{ From = (Join-Path $root 'licenses/webview2/LICENSE.txt');      To = 'WebView2-LICENSE.txt' },
+    @{ From = (Join-Path $root 'licenses/webview2/NOTICE.txt');       To = 'WebView2-NOTICE.txt' }
   )) {
   if (-not (Test-Path $lic.From)) { throw "缺许可文件：$($lic.From)" }
   Copy-Item $lic.From (Join-Path $appDir $lic.To) -Force
@@ -165,9 +170,12 @@ LookupApp · 悬浮 MDict 词典  v$Version（内核 C 重写版）
 
 许可
   本程序以 MIT 许可发布 —— 全文见 LICENSE.txt。
-  内嵌的第三方代码（libspeex，用来播词典自带的 .spx 录音）按 BSD 3-Clause 授权，
-  全文见 libspeex-COPYING.txt；其余第三方情况见 THIRD-PARTY.txt。
-  再分发本包时请把这三份文件一起带上。
+  两处第三方代码都按 BSD 3-Clause 授权：
+    · 内嵌的 libspeex（用来播词典自带的 .spx 录音）—— 全文见 libspeex-COPYING.txt；
+    · 随包分发的 Microsoft WebView2（界面渲染用）—— 全文见 WebView2-LICENSE.txt，
+      另有上游声明 WebView2-NOTICE.txt。
+  其余第三方情况（含"哪些没随包分发"）见 THIRD-PARTY.txt。
+  再分发本包时请把这五份文件一起带上。
 
 这一份是什么时候打的（**判断"是不是最新"请看这里，别看文件时间**）
   打包时间   $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))
