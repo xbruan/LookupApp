@@ -151,10 +151,12 @@ node tools/gen-bindings.mjs --check    # A 级：产物与接口定义一致（�
     带**未验证假设**的改动要先**单独**验证假设，再往下做。
 11. 定向观察要**固化**：常用的观察写进 `tools/probe-page.mjs` 的参数 / 子命令里，
     **禁止**每次现拼一段一次性 `--eval` 表达式（用完即弃、下次还得重写）。
-12. **`reference/0.1.3-parser/` 是只读的冻结参考实现。** 永远不要编辑它 ——
-    参考实现一旦漂移，对照测试就**悄悄失去意义**（它比对的是"我们和标准答案一样"，
-    标准答案被人动过之后，全绿也不代表任何事）。要改参考行为，先把要改的东西
-    在 `reference/0.1.3-parser/README.md` 里记清楚、并说明对基线的影响。
+12. ★ **参考实现（上一代的 C# 实现）不随本仓库发布；要用时按 `tools/make-golden.ps1` 等脚本给出的
+    提示把它取回来，取回来之后它是只读的。** 日常回归、构建、打包都**不需要**它 —— 四个重生成入口
+    （`make-entry-assets.ps1` / `make-html-vectors.ps1` / `make-golden.ps1` / `run-golden.sh --regen`）
+    才是唯一用到它的地方，而它们在你没有它时会**明着告诉你怎么取回来**（不是死胡同）。
+    ⚠️ 它在的时候**一个字节都不许改**：它一旦漂移，对照测试就**悄悄失去意义** ——
+    它比对的是"与标准答案一样"，标准答案被人动过之后，**全绿也不代表任何事**。
 13. **禁止"由正在被测的实现重生成自己的标准答案"。** 冻结基线只能由参考实现产出
     （`tools/run-golden.sh --regen` 那条显式路径），日常回归只跑 C 侧 + 比冻结基线。
 14. **禁止运行"递归清空目标目录"那类发布脚本**（历史上 `tools/make-public-repo.ps1` 会先
@@ -300,9 +302,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\test-shell-app.ps1 > l
    原则：**一个跑不起来的子命令比没有它更坏** —— 发现一个就修一个或明确标出来，别让人以为"现场就是这样"。
 2. **界面上的"出路按钮"位置变了**（从词条正文末尾搬到正文框顶部，见 §五 5.1）。
    正文文档里那段 `renderChips` 与 `#lookupChips` 容器**还在、但已经是死代码**
-   （宿主不再往正文送 `chips`）。彻底拆掉它要动 `reference/` 的 `EntryDocument.cs`、
-   重新生成 `native/src/dict/entry_assets.h` 与 `native/tests/entry_doc_vectors.h`
-   —— 那是一条跨"冻结参考实现"的改动，要单独做、单独验。
+   （宿主不再往正文送 `chips`）。彻底拆掉它要动参考实现里的 `EntryDocument.cs`、再重新生成
+   `native/src/dict/entry_assets.h` 与 `native/tests/entry_doc_vectors.h` ——
+   ★ 也就是说**这条待办必须先把参考实现取回来**（提示见 `tools/make-entry-assets.ps1`），
+   再按"改参考实现 → 重新生成产物"那条路走。这是一条跨"参考实现"的改动，要单独做、单独验。
 3. **在线路径没有自动回归**：`probe-mt.mjs` 与带 `-MtKey` 的 D 级检查要真凭据、要花钱，
    所以默认回归覆盖不到它们。请求构造之类能脱离网络的部分见 `native/tests/test_translate.c`。
 4. **`docs/design/` 里那些设计文档写的是"打算怎么做"**，不是"实际验过什么"。

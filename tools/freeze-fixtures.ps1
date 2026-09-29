@@ -9,6 +9,7 @@
 # 核的两份清单：
 #   ① testdata/SHA256.txt                —— 测试用词典与格式矩阵样本（21 个条目 / 23 个文件）
 #   ② reference/0.1.3-parser/SHA256.txt  —— 参考实现的 16 个 .cs（**基线是它们产出的**）
+#      ⚠️ 参考实现**不随本仓库发布** —— 这份清单**在就核、不在就明着说一句跳过**，不是失败。
 #
 # ⚠️ 它**不再**"从兄弟目录复制进来"。这批东西以前是从
 #    ../0.1.3/testdata 与 ../0.1.3/tools/MdxProbe/variants 拷过来的，于是
@@ -107,6 +108,13 @@ if ($UpdateManifest) {
 # ── 默认动作：校验 ────────────────────────────────────────────────────────────
 Write-Host '── 冻结件校验 ──' -ForegroundColor Cyan
 Test-Manifest $manifest $dst
-Test-Manifest $refManifest $refBase
+if (Test-Path $refManifest) {
+  Test-Manifest $refManifest $refBase
+} else {
+  # ⚠️ **不是失败，是正常状态**：参考实现是上一代（0.1.3）C# 实现的一部分，
+  #    **不随本仓库发布**（移植已完成，日常回归不需要它）。这里**明着说一句**而不是静默
+  #    跳过 —— "少核了一份东西"必须看得见。
+  Write-Host '  · 参考实现不随本仓库发布 —— 跳过它的逐文件校验（那份清单跟着它自己一起走）' -ForegroundColor Yellow
+}
 Write-Host '冻结件全部与清单逐字节相同。' -ForegroundColor Green
 exit 0

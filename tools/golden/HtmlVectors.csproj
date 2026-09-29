@@ -2,7 +2,7 @@
 
   <!--
     HtmlVectors：跑 **0.1.3 的参考实现**（仓库内冻结副本
-    `reference/0.1.3-parser/src/Dictionary/HtmlUtils.cs`）把一批 HTML
+    参考实现里的 `HtmlUtils.cs`）把一批 HTML
     输入的处理结果吐成 C 头文件，给 C 内核的 `dsh_html_*` 做**标准答案文件对照测试**。
 
     与 GoldenDump 同一个模式：net48（与主程序一致）、把仓库内那份只读参考源码
@@ -38,6 +38,8 @@
 
   <ItemGroup>
     <Compile Include="html-vectors.cs" />
+    <!-- ⚠️ 下面这行指向的参考实现**不随本仓库发布**（上一代 0.1.3 C# 实现的一部分）——
+         先把它取回来，或走 tools/make-html-vectors.ps1（它会先给出人话提示）。 -->
     <!-- 参考实现：只链这一个文件（它是纯字符串工具，不依赖 Models / Newtonsoft） -->
     <Compile Include="../../reference/0.1.3-parser/src/Dictionary/HtmlUtils.cs" />
   </ItemGroup>

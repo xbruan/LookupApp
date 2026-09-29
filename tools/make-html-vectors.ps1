@@ -1,6 +1,6 @@
 ﻿# =============================================================================
 # 生成 HTML 标准答案文件表：让 **0.1.3 的参考实现（C# `HtmlUtils`，仓库内的只读副本
-# `reference/0.1.3-parser/src/Dictionary/HtmlUtils.cs`）** 把一批 HTML 输入的处理结果
+# 参考实现里的 `HtmlUtils.cs`）** 把一批 HTML 输入的处理结果
 # 吐成 C 头文件，给内核的 `dsh_html_*` 逐字节对照测试。
 #
 #   powershell -File tools/make-html-vectors.ps1
@@ -14,7 +14,7 @@
 # trim 范围（U+3000 算不算）、孤立代理项怎么处理，全靠这份表针对。
 #
 # ⚠️ 依赖：dotnet SDK（与 tools/make-golden.ps1 同一个找法 —— 系统 PATH 上那个
-#    可能只有运行时）。参考实现是**仓库内**的一份只读副本（reference/0.1.3-parser/），
+#    可能只有运行时）。参考实现**不随本仓库发布**（取回来时才需要它），
 #    本脚本只编译它、不改它，也不再去任何兄弟目录里取源码。
 # =============================================================================
 
@@ -29,9 +29,24 @@ $header = Join-Path $root 'native/tests/html_vectors.h'
 $refSrc = Join-Path $root 'reference/0.1.3-parser/src/Dictionary/HtmlUtils.cs'
 
 # ⚠️ 这里原来找的是"版本目录的父目录/0.1.3/src/Dictionary/HtmlUtils.cs"（兄弟目录）——
-#    参考实现已冻结进本仓库，那个概念随之取消：找不到就是本仓库缺件。
+#    参考实现随后被冻结进本仓库，那个概念随之取消。
+#    0.2.1 起参考实现**移出本仓库、改为归档**，所以"找不到"是**正常状态** ——
+#    这条报错要做的是说清怎么接回来，而不是留一个死胡同。
 if (-not (Test-Path $refSrc)) {
-  throw "找不到参考实现源码：$refSrc`n（它应当随仓库一起提交，见 reference/0.1.3-parser/README.md）"
+  throw @"
+找不到参考实现源码：$refSrc
+
+那份 C# 参考实现**不随本仓库发布**（只有"重新生成产物"才需要它）。
+把它接回来：
+
+  ① 找到归档包 reference-0.1.3-parser.zip
+     SHA256 71eb1e2ed01db48f67c39700578d717a822df68d107845cdedeede943062e079
+  ② tar -xf <归档目录>\reference-0.1.3-parser.zip -C <本仓库>\reference
+  ③ 再跑本脚本
+
+它是什么：这份源码**不随本仓库发布**，是上一代（0.1.3）C# 实现的一部分 ——
+只有"重新生成产物"才需要它，日常开发、测试、打包都不需要。
+"@
 }
 
 $dotnet = if (Test-Path (Join-Path $env:USERPROFILE '.dotnet/dotnet.exe')) {

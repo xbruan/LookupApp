@@ -4,8 +4,7 @@
 //   powershell -File tools/make-golden.ps1       编它（链仓库内那份只读参考实现，net48）
 //   golden-dump.exe <词典.mdx ...>                跑它（输出 JSON 到 stdout）
 //
-// 它把 0.1.3 的**参考实现**（C# 的 MdictCore，仓库内只读副本
-// reference/0.1.3-parser/src/Dictionary/）对一本 .mdx 的全部输出，
+// 它把参考实现（C# 的 MdictCore）对一本 .mdx 的全部输出，
 // 规范化成一份确定的 JSON 写到 stdout。C 内核的对应诊断脚本产出同样的形状，
 // 两边逐字节比对 —— 这才是"与参考实现对齐"的证据（不是"我们自己也解得开"）。
 //

@@ -9,12 +9,12 @@
 
     与 0.1.3 的 tools/MdxProbe/MdxProbe.csproj 同一个模式：
       · 目标框架 net48（与主程序一致，测出来的就是主程序里的行为）；
-      · 把 **仓库内**的参考实现 reference/0.1.3-parser/src/Dictionary/*.cs
+      · 把参考实现（**不随本仓库发布**）的 src/Dictionary/*.cs
         **直接链进来**，不复制源码、也不再读兄弟目录；
       · 排除应用层文件（DictionaryEngine / DictionaryProbe）——
         那些依赖主程序的 Models/Newtonsoft，而且这里只验解析器。
 
-    ⚠️ 参考实现那一份是**只读**的（reference/0.1.3-parser/README.md）：它一漂移，
+    ⚠️ 参考实现那一份是**只读**的：它一漂移，
        基线就悄悄失效了。往那个目录下加新的应用层文件时，这里要跟着加一行 Remove；
        忘了的症状是这个诊断脚本**编不过**（CS0246），不是悄悄少测。
   -->
@@ -44,7 +44,10 @@
     <!-- 临时诊断诊断脚本（diag-*.cs）有自己的 Main，**不进这个工程** —— 它们用
          GoldenDiag.csproj 单独编。诊断用完两个文件一起删。 -->
     <Compile Remove="diag-*.cs" />
-    <!-- 参考实现的解析器：仓库内 reference/0.1.3-parser/ 那一份冻结副本（只读），不复制 -->
+    <!-- ⚠️ 下面这几行指向的参考实现**不随本仓库发布**（它是上一代 0.1.3 C# 实现的一部分）。
+         直接 `dotnet build` 这个工程会因为找不到源码而给出看不懂的错 —— 先把它取回来，
+         或走 `tools/make-golden.ps1`（它会先给出人话提示与取回来的步骤）。 -->
+    <!-- 参考实现的解析器：那一份冻结副本（只读），不复制 -->
     <Compile Include="../../reference/0.1.3-parser/src/Dictionary/*.cs" />
     <Compile Remove="../../reference/0.1.3-parser/src/Dictionary/DictionaryEngine.cs" />
     <Compile Remove="../../reference/0.1.3-parser/src/Dictionary/DictionaryProbe.cs" />

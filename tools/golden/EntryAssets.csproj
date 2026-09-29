@@ -2,7 +2,7 @@
 
   <!--
     EntryAssets：把 **0.1.3 的参考实现**（仓库内冻结副本
-    `reference/0.1.3-parser/src/Dictionary/EntryDocument.cs`）里的两件东西
+    参考实现里的 `EntryDocument.cs`）的两件东西
     抽出来，变成 C 内核能直接用的生成物：
 
       ① `BaseStyle`（那份基础样式）与 `BridgeScript`（注入词条正文的桥接脚本）
@@ -40,6 +40,8 @@
 
   <ItemGroup>
     <Compile Include="entry-assets.cs" />
+    <!-- ⚠️ 下面这行指向的参考实现**不随本仓库发布**（上一代 0.1.3 C# 实现的一部分）——
+         先把它取回来，或走 tools/make-entry-assets.ps1（它会先给出人话提示）。 -->
     <Compile Include="../../reference/0.1.3-parser/src/Dictionary/EntryDocument.cs" />
   </ItemGroup>
 

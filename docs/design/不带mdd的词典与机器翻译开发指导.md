@@ -606,7 +606,7 @@ translate.targetMode         ← auto / zh / en
 | --- | --- |
 | 词典目录里的文件清单、没有 `.mdd` | 列目录实测 |
 | 词条引用裸文件名 `xsjhy20oct2.css` | 用 `js-mdict` 直接 dump 词条正文 |
-| 参考实现的资源查找第一步就短路 | 读参考实现的 `DictionaryEngine.cs`（`reference/0.1.3-parser/src/Dictionary/` 里有它的冻结副本） |
+| 参考实现的资源查找第一步就短路 | 读参考实现的 `DictionaryEngine.cs`（那份参考实现**不随本仓库发布**） |
 | CSP / MIME / CORS / `<base>` **已就绪** | 读 `native/src/dict/dsh_entry_doc.c` 的 `CSP[]` 与 `dsh_entry_doc_base`、`native/src/dict/dsh_mime.c`、`shell/Lookup.Host/VirtualHost.cs` |
 | `_pure.css` **不是**无 JS 版 | 两份 CSS 逐行比对（差 27 行） |
 | **思源字体已补齐且可用** | 列目录 + 读头 4 字节（`00 01 00 00` = 真 TrueType）+ 用 PyMuPDF 解析出字体名 `Source Han Serif CN Regular`，与 CSS 的 `font-family` 对得上 |

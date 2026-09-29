@@ -2,7 +2,8 @@
  * 【生成，不许手改】HTML 标准答案表 —— 由 0.1.3 的参考实现产出。
  *
  * 生成：powershell -File tools/make-html-vectors.ps1
- * 来源：reference/0.1.3-parser/src/Dictionary/HtmlUtils.cs（0.1.3 参考实现的仓库内只读副本）
+ * 来源：0.1.3 的参考实现（C#）里 `HtmlUtils.cs`（那份参考实现**不随本仓库
+ * 发布**；接回来的步骤见 `tools/make-html-vectors.ps1` 找不到它时给出的提示）
  *
  * 字节一律写成十六进制（不是 C 字符串字面量）：输入里有引号、反斜杠、
  * 内嵌 U+0000 与中文，拼字面量迟早会拼错一处 —— 而拼错的症状是

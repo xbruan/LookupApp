@@ -7,7 +7,7 @@ using Lookup.Dictionary;
 namespace Lookup.Tools.HtmlVectors
 {
     /// <summary>
-    /// 把 0.1.3 的 `HtmlUtils`（仓库内只读副本 reference/0.1.3-parser/）在一批输入上的
+    /// 把 0.1.3 的 `HtmlUtils`（参考实现，**不随本仓库发布**）在一批输入上的
     /// 输出**冻成 C 头文件**，给 C 内核的 `dsh_html_*` 当标准答案文件。
     /// 用法：`HtmlVectors.exe <输出路径>`。
     ///
@@ -189,8 +189,8 @@ namespace Lookup.Tools.HtmlVectors
             sb.Append(" * 【生成，不许手改】HTML 标准答案表 —— 由 0.1.3 的参考实现产出。\n");
             sb.Append(" *\n");
             sb.Append(" * 生成：powershell -File tools/make-html-vectors.ps1\n");
-            sb.Append(" * 来源：reference/0.1.3-parser/src/Dictionary/HtmlUtils.cs"
-                      + "（0.1.3 参考实现的仓库内只读副本）\n");
+            sb.Append(" * 来源：0.1.3 的参考实现（C#）里 `HtmlUtils.cs`（那份参考实现**不随本仓库\n");
+            sb.Append(" * 发布**；接回来的步骤见 `tools/make-html-vectors.ps1` 找不到它时给出的提示）\n");
             sb.Append(" *\n");
             sb.Append(" * 字节一律写成十六进制（不是 C 字符串字面量）：输入里有引号、反斜杠、\n");
             sb.Append(" * 内嵌 U+0000 与中文，拼字面量迟早会拼错一处 —— 而拼错的症状是\n");

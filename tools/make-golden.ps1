@@ -3,7 +3,7 @@
 #
 #   powershell -File tools/make-golden.ps1
 #
-# 它**只负责编译**（链仓库内那份只读的参考实现副本，见 reference/0.1.3-parser/README.md）。
+# 它**只负责编译**（链那份只读的参考实现 —— 它**不随本仓库发布**，取回来时才编得动）。
 # 跑它、并把结果写进标准答案文件基线的那一步在 WSL 那一侧：
 #
 #   wsl.exe -d Ubuntu --cd <仓库的 WSL 路径> bash tools/run-golden.sh <仓库的 WSL 路径> --regen
@@ -38,11 +38,27 @@ $outDir = Join-Path $root 'tools/golden'
 $refSrc = Join-Path $root 'reference/0.1.3-parser/src/Dictionary/MdictCore.cs'
 
 # ⚠️ 这里原来找的是"版本目录的父目录/0.1.3/src/Dictionary/MdictCore.cs" —— 也就是**穿到兄弟目录**
-#    里去链源码，于是这道 gate 能不能跑取决于邻居的目录还在不在。参考实现已按
-#    docs/code-review-2026-09-29.md 的建议冻结进本仓库，那个"$Repo"概念随之取消：
-#    找不到就是**本仓库缺件**，不再有"去别处找一份"这条路。
+#    里去链源码，于是这道 gate 能不能跑取决于邻居的目录还在不在。参考实现随后被冻结进本仓库，
+#    那个"$Repo"概念随之取消：找不到就是**本仓库缺件**，不再有"去别处找一份"这条路。
+#
+# ⚠️ 0.2.1 起参考实现**移出本仓库、改为归档**（移植已完成，日常回归不需要它 ——
+#    C 级对照测试比的是冻结基线，不编 C#）。所以现在"找不到"是**正常状态**，
+#    而这条报错要做的是**说清怎么把它接回来**，不是一个死胡同。
 if (-not (Test-Path $refSrc)) {
-  throw "找不到参考实现源码：$refSrc`n（它应当随仓库一起提交，见 reference/0.1.3-parser/README.md）"
+  throw @"
+找不到参考实现源码：$refSrc
+
+那份 C# 参考实现**不随本仓库发布**（只有"重新生成产物"才需要它）。
+把它接回来：
+
+  ① 找到归档包 reference-0.1.3-parser.zip
+     SHA256 71eb1e2ed01db48f67c39700578d717a822df68d107845cdedeede943062e079
+  ② tar -xf <归档目录>\reference-0.1.3-parser.zip -C <本仓库>\reference
+  ③ 再跑本脚本
+
+它是什么：这份源码**不随本仓库发布**，是上一代（0.1.3）C# 实现的一部分 ——
+只有"重新生成产物"才需要它，日常开发、测试、打包都不需要。
+"@
 }
 
 # dotnet SDK：系统 PATH 上那个 `dotnet` 可能只有运行时（没有 sdk），

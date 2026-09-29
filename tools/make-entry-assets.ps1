@@ -1,6 +1,6 @@
 ﻿# =============================================================================
 # 生成词条正文的"资产"与标准答案文件 —— 全部来自 **0.1.3 的参考实现**（仓库内的只读副本
-# `reference/0.1.3-parser/src/Dictionary/EntryDocument.cs`）。
+# 参考实现里的 `EntryDocument.cs`）。
 #
 #   powershell -File tools/make-entry-assets.ps1
 #
@@ -13,7 +13,7 @@
 # 样式丢一半，从代码上根本看不出来。让参考实现自己吐出来，这一步就不存在了。
 #
 # ⚠️ 依赖 dotnet SDK（与 tools/make-golden.ps1 同一个找法）。参考实现是**仓库内**的一份
-#    只读副本（reference/0.1.3-parser/，逐字节哈希见那边的 SHA256.txt）——
+#    **不随本仓库发布**（取回来时才需要它；逐字节哈希跟着它自己走）——
 #    本脚本只编译它、不改它，也不再去任何兄弟目录里取源码。
 # =============================================================================
 
@@ -29,9 +29,24 @@ $vectorHeader = Join-Path $root 'native/tests/entry_doc_vectors.h'
 $refSrc = Join-Path $root 'reference/0.1.3-parser/src/Dictionary/EntryDocument.cs'
 
 # ⚠️ 这里原来找的是"版本目录的父目录/0.1.3/src/Dictionary/EntryDocument.cs"（兄弟目录）——
-#    参考实现已冻结进本仓库，那个概念随之取消：找不到就是本仓库缺件。
+#    参考实现随后被冻结进本仓库，那个概念随之取消。
+#    0.2.1 起参考实现**移出本仓库、改为归档**，所以"找不到"是**正常状态** ——
+#    这条报错要做的是说清怎么接回来，而不是留一个死胡同。
 if (-not (Test-Path $refSrc)) {
-  throw "找不到参考实现源码：$refSrc`n（它应当随仓库一起提交，见 reference/0.1.3-parser/README.md）"
+  throw @"
+找不到参考实现源码：$refSrc
+
+那份 C# 参考实现**不随本仓库发布**（只有"重新生成产物"才需要它）。
+把它接回来：
+
+  ① 找到归档包 reference-0.1.3-parser.zip
+     SHA256 71eb1e2ed01db48f67c39700578d717a822df68d107845cdedeede943062e079
+  ② tar -xf <归档目录>\reference-0.1.3-parser.zip -C <本仓库>\reference
+  ③ 再跑本脚本
+
+它是什么：这份源码**不随本仓库发布**，是上一代（0.1.3）C# 实现的一部分 ——
+只有"重新生成产物"才需要它，日常开发、测试、打包都不需要。
+"@
 }
 
 $dotnet = if (Test-Path (Join-Path $env:USERPROFILE '.dotnet/dotnet.exe')) {

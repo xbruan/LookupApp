@@ -1,6 +1,7 @@
 /* ==========================================================================
  * 【生成，不许手改】词条正文的标准答案表 —— 由 0.1.3 的参考实现
- * `EntryDocument.Build` 产出（仓库内只读副本 reference/0.1.3-parser/）。
+ * `EntryDocument.Build` 产出（那份参考实现不随本仓库发布；接回来的步骤见
+ * `tools/make-entry-assets.ps1` 找不到它时给出的提示）。
  *
  * 生成：powershell -File tools/make-entry-assets.ps1
  * 消费方：native/tests/test_entry_doc.c（逐字节对照测试）

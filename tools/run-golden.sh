@@ -148,6 +148,23 @@ echo "║     只有「参考实现确实变了」（换了/改了 reference/0.1
 echo "║     才该跑；基线只由 C# 参考实现产出，C 侧的输出一个字节都不读       ║"
 echo "╚══════════════════════════════════════════════════════════════════════╝"
 
+# ⚠️ 先确认参考实现**在不在**：0.2.1 起它移出本仓库、改为归档，所以"不在"是**正常状态** ——
+#    但 --regen 非用它不可，所以这里要**当场说清怎么接回来**，而不是让它跑去编一个空工程
+#    （那会得到一串看不懂的 C# 编译错误，正是"照提示做还是不行"的那种死胡同）。
+if [ ! -f "$REF_MANIFEST" ]; then
+  echo "找不到参考实现：$ROOT/reference/0.1.3-parser/" >&2
+  echo "" >&2
+  echo "那份 C# 参考实现**不随本仓库发布**（日常回归不需要它，只有 --regen 要）。" >&2
+  echo "把它接回来：" >&2
+  echo "  ① 找到归档包 reference-0.1.3-parser.zip" >&2
+  echo "     SHA256 71eb1e2ed01db48f67c39700578d717a822df68d107845cdedeede943062e079" >&2
+  echo "  ② tar -xf <归档目录>/reference-0.1.3-parser.zip -C <本仓库>/reference" >&2
+  echo "  ③ 再跑：sh tools/run-golden.sh <仓库根> --regen" >&2
+  echo "" >&2
+  echo "这份源码**不随本仓库发布**，它是上一代（0.1.3）C# 实现的一部分；只有 --regen 需要它。" >&2
+  exit 3
+fi
+
 # ── ① 编参考实现（Windows 的 dotnet SDK；WSL 里一般没有 SDK，走 interop 调 dotnet.exe）──
 find_dotnet() {
   if [ -n "$DOTNET" ]; then printf '%s' "$DOTNET"; return 0; fi

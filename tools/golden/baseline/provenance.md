@@ -13,8 +13,8 @@
 | 生成时间（UTC） | 2026-09-29 05:04:41 |
 | 生成的命令 | `sh tools/run-golden.sh <仓库的 WSL 路径> --regen`（特权操作，显式调用） |
 | 产出它的程序 | `tools/golden/bin/Release/net48/GoldenDump.exe`（SHA256 `19c1300789c384c565b74004eebe2950409e7e7179c2f2bb1468cd1e3db7976e`） |
-| 参考实现 | `reference/0.1.3-parser/src/Dictionary/`（0.1.3 的冻结副本，**只读**） |
-| 参考实现清单 | `reference/0.1.3-parser/SHA256.txt`（SHA256 `2232dbe5fc8b20c31cf2f040624bf0140657f1d8ce70430584170012b1019a7d`） |
+| 参考实现 | 0.1.3 的 `src/Dictionary/`（**只读**冻结副本）—— ⚠️ **不随本仓库发布**，它是上一代 C# 实现的一部分 |
+| 参考实现清单 | 原 `reference/0.1.3-parser/SHA256.txt`（SHA256 `2232dbe5fc8b20c31cf2f040624bf0140657f1d8ce70430584170012b1019a7d`）—— 该文件跟着参考实现自己走（包 `reference-0.1.3-parser.zip`，SHA256 `71eb1e2ed01db48f67c39700578d717a822df68d107845cdedeede943062e079`） |
 | 测试用词典清单 | `tools/golden/fixtures.txt`（SHA256 `607a7a153673535ef2f7d12f8c0c81b13e167b8cfd10380703b7d00cea10d6b3`，共 21 条） |
 | 基线文件 | `golden-baseline.json`（399159 字节，SHA256 `73ddef58cdc9ed5c538a8b3c4025ee02340d75097e4b00e903fa6037d2441731`） |
 | 与上一份基线 | 与上一份基线**逐字节相同**（参考实现与清单都没变过；这份 re-gen 是空跑） |

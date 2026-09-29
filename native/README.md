@@ -23,7 +23,7 @@
 | **测试用词典（fixture）** | 专为测试准备的输入文件，一个字节都不许改 | `testdata/` 里那些 `.mdx` / `.mdd` |
 | **标准答案文件（golden file）** | 对照测试用来比对的"标准答案" | `tools/golden/baseline/golden-baseline.json`（来源记录见同目录 `provenance.md`） |
 | **对照测试** | 把新实现和参考实现在同样输入下比结果，要求逐字节相同 | `tools/golden-gate.ps1` |
-| **参考实现** | 功能以它为准的那一个 | 0.1.3 的 C# 解析器，已冻结成本仓库内的只读副本 `reference/0.1.3-parser/` |
+| **参考实现** | 上一代那一份实现；如今只在"重新生成产物"时才用它 | 上一代的 C# 实现，**不随本仓库发布** |
 | **诊断脚本（probe）** | 只查看程序当前状态、不下结论的小脚本 | `tools/wsl-run-test.sh`、`tools/probe-page.mjs` |
 | **真实程序** | 真起一个程序来验，不是模拟 | `tools/test-shell-app.ps1` |
 | **宿主程序** | 承载界面并把它显示出来的那个真实程序（`host`） | `shell/Lookup.App` |

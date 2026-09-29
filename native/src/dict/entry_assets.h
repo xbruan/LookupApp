@@ -2,9 +2,11 @@
  * 【生成，不许手改】词条正文的两份资产 —— 由 0.1.3 的参考实现产出。
  *
  * 生成：powershell -File tools/make-entry-assets.ps1
- * 来源：reference/0.1.3-parser/src/Dictionary/EntryDocument.cs
- *       （0.1.3 参考实现的仓库内只读副本）的两个 `private const string`
+ * 来源：0.1.3 的参考实现（C#）里 `EntryDocument.cs` 的两个 `private const string`
  *       （`BaseStyle` 与 `BridgeScript`，走反射读出来，**一个字节都没改**）
+ * ⚠️ 那份参考实现**是上一代的实现、不随本仓库发布**。要改这两段字符串，得先把它
+ *    取回来 —— 接回来的步骤写在 `tools/make-entry-assets.ps1` 找不到它时给出的
+ *    提示里。日常开发不需要它。
  *
  * ⚠️ 七百多行的 CSS + JS，**绝不许手抄或手改**：抄错一个转义符的症状是
  *    词条页莫名其妙地坏（桥接不生效、样式丢一半），最难查的一类。
