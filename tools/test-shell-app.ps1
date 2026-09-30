@@ -3,7 +3,7 @@
 #   powershell -File tools/test-shell-app.ps1
 #
 # 与 `tools/test-windows-dll.ps1` 是**两条不同的门**，不能互相替代：那道门把内核与宿主适配层
-# 单独喂进去（不开窗口），验不了「WebView2 到底有没有把 https://lookup.local/… 交给宿主」、
+# 单独喂进去（不开窗口），验不了「WebView2 到底有没有把 https://lookup.invalid/… 交给宿主」、
 # 「跨源 iframe 的字节有没有真的经虚拟主机进来」；四层之间的缝只有这道门是事实。
 #
 # 断言写在 C# 里（shell/Lookup.App/SelfCheck.cs），脚本只管**打前端、编壳、摆、跑、清**。
@@ -223,26 +223,47 @@ if ($rc -ne 0) { throw "真实程序自检失败（退出码 $rc）" }
 # 降不到 A/B/C：那个值内核读得对（B 级已钉），但「设成 false 之后下一次启动屏幕上真的没有胶囊」
 # 必须**再启动一次**、且在窗口显示出来之前观测 —— C 级诊断脚本连上去的时候已经晚了。
 # 两个方向都验，否则设置被忽略时这些断言照样绿：
-#   ① `showFloatingOnStartup:false` → 进程活着，但**没有任何可见窗口**；
-#   ② 反向对照：同一份配置改成 `true` → 进程活着，而且**有可见窗口**。
-Write-Host '── ④ 第二趟启动：设置里关掉「启动时显示悬浮窗」→ 起来之后不该有可见窗口 ──' -ForegroundColor Cyan
+#   ① `showFloatingOnStartup:false` → 进程活着，但**屏幕上没有任何窗口**；
+#   ② 反向对照：同一份配置改成 `true` → 进程活着，而且**屏幕上有窗口**。
+# ⚠️ 判据是"**屏幕上**"不是"可见"：悬浮窗启动时先停在屏幕外等页面首帧（见 §下 Get-OnScreenWindows）。
+Write-Host '── ④ 第二趟启动：设置里关掉「启动时显示悬浮窗」→ 起来之后屏幕上不该有窗口 ──' -ForegroundColor Cyan
 
 Add-Type -Namespace DshGate -Name Win -MemberDefinition @'
 [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc f, IntPtr p);
 public delegate bool EnumWindowsProc(IntPtr h, IntPtr p);
 [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
 [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+[DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+[DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
+public struct RECT { public int Left, Top, Right, Bottom; }
 '@
 
-# 这个进程有几个**可见**的顶层窗口（WebView2 那些辅助窗口都是不可见的，不计）
-function Get-VisibleWindows([int]$ownerPid) {
+# 这个进程有几个**出现在屏幕上的**顶层窗口（WebView2 那些辅助窗口都是不可见的，不计）。
+#
+# ★ 判据是"**屏幕上的**窗口"，不是单独的 `IsWindowVisible`：
+#   悬浮窗启动时先停在**屏幕外**等页面首帧（见 `FloatingLayout.ParkOffScreen`）——
+#   那一段它 `IsWindowVisible` 为真，可用户屏幕上什么都没有。拿 `IsWindowVisible` 当判据，
+#   会把"看不见"判成"看见了"：那条断言会跟着时序一起红（实测约 7~11 ms 的 API 可见位，
+#   50 ms 采样偶尔正好落进去）。判据钉的必须是**用户屏幕上有没有**。
+function Get-OnScreenWindows([int]$ownerPid) {
+  # 虚拟屏幕（所有显示器并起来的那一块）：SM_XVIRTUALSCREEN / SM_YVIRTUALSCREEN /
+  # SM_CXVIRTUALSCREEN / SM_CYVIRTUALSCREEN = 76 / 77 / 78 / 79
+  $vx = [DshGate.Win]::GetSystemMetrics(76); $vy = [DshGate.Win]::GetSystemMetrics(77)
+  $vw = [DshGate.Win]::GetSystemMetrics(78); $vh = [DshGate.Win]::GetSystemMetrics(79)
   $out = New-Object System.Collections.ArrayList
   $cb = [DshGate.Win+EnumWindowsProc] {
     param($h, $p)
     # ⚠️ 变量名不能叫 `$pid`：那是 PowerShell 的只读自动变量。
     $op = 0
     [void][DshGate.Win]::GetWindowThreadProcessId($h, [ref]$op)
-    if ($op -eq $ownerPid -and [DshGate.Win]::IsWindowVisible($h)) { [void]$out.Add($h) }
+    if ($op -eq $ownerPid -and [DshGate.Win]::IsWindowVisible($h)) {
+      $r = New-Object DshGate.Win+RECT
+      [void][DshGate.Win]::GetWindowRect($h, [ref]$r)
+      $w = $r.Right - $r.Left; $hh = $r.Bottom - $r.Top
+      if ($w -gt 0 -and $hh -gt 0 -and
+          $r.Left -lt ($vx + $vw) -and $r.Right -gt $vx -and
+          $r.Top -lt ($vy + $vh) -and $r.Bottom -gt $vy) { [void]$out.Add($h) }
+    }
     return $true
   }
   [void][DshGate.Win]::EnumWindows($cb, [IntPtr]::Zero)
@@ -277,7 +298,7 @@ try {
     $seen = 0
     for ($i = 0; $i -lt 40; $i++) {
       Start-Sleep -Milliseconds 50
-      $seen = [Math]::Max($seen, @(Get-VisibleWindows $p.Id).Count)
+      $seen = [Math]::Max($seen, @(Get-OnScreenWindows $p.Id).Count)
     }
     $alive = -not $p.HasExited
     if ($alive) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
@@ -286,7 +307,7 @@ try {
     $okAlive = $alive
     $okSeen = if ($case.wantVisible) { $seen -ge 1 } else { $seen -eq 0 }
     if (-not ($okAlive -and $okSeen)) { $startFailures++ }
-    $startReport += ("    {0} {1} → 进程活着={2} / 可见窗口最多 {3} 个（{4}）" -f `
+    $startReport += ("    {0} {1} → 进程活着={2} / 屏幕上的窗口最多 {3} 个（{4}）" -f `
       $(if ($okAlive -and $okSeen) { '✓' } else { '✗' }), $case.label, $alive, $seen,
       $(if ($case.wantVisible) { '≥1 才算对' } else { '必须 0' }))
   }
@@ -301,6 +322,6 @@ $startReport | ForEach-Object { Write-Host $_ }
 if ($startFailures -ne 0) {
   throw "「启动时显示悬浮窗」/「--autostart」那几条不成立：$startFailures / $($startCases.Count) 档没对上（见上面实测结果）"
 }
-Write-Host '  ✓ 三档都对：关掉之后真的没有可见窗口、开着的时候真的有、带 --autostart 也照常起来' -ForegroundColor Green
+Write-Host '  ✓ 三档都对：关掉之后屏幕上真的没有窗口、开着的时候真的有、带 --autostart 也照常起来' -ForegroundColor Green
 
 Write-Host '── 真实程序那条门通过 ──' -ForegroundColor Green

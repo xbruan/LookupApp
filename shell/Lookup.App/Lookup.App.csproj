@@ -7,9 +7,9 @@
       · 开窗口、把 WebView2 摆进去；
       · 把 WebView2 的两种事件翻给宿主适配层：
           WebResourceRequested → VirtualHost.Serve（词典资源 `*.dictres.invalid`
-                                 与外壳自己的站点 `lookup.local`）
+                                 与外壳自己的站点 `lookup.invalid`）
           WebMessageReceived   → Dispatch.Handle（前端的唯一入口）
-      · 把 `lookup.local` 那个根目录（`web/`）告诉 ShellAssets。
+      · 把 `lookup.invalid` 那个根目录（`web/`）告诉 ShellAssets。
 
     ⚠️ 这里是**唯一**允许 `using Microsoft.Web.WebView2` 的地方。
        `Lookup.Host` 一行 WebView 都不许有 —— 它要能被不开窗口的端到端验收直接驱动

@@ -444,6 +444,10 @@ namespace Lookup.Host
                 case "shape:set":
                     shell.SetShape(Arg(args, 0), ArgStr(args, 1), ArgBool(args, 2, false));
                     return null;
+                case "boot:ready":
+                    /* 首帧出来了：把启动时停在屏幕外的悬浮窗摆回真实位置（见 IShellHost.BootReady）。 */
+                    shell.BootReady();
+                    return null;
                 case "drag:prepare":
                     shell.DragPrepare();
                     return null;

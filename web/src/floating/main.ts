@@ -4125,6 +4125,12 @@ async function bootstrap(): Promise<void> {
   pushLayout()
   dom.input.focus()
   document.body.dataset.ready = 'true'
+  /*
+   * ★ 告诉宿主"可以摆了"：**两次 rAF** 之后才发 —— 第一次 rAF 只说明"这一帧会画"，
+   *   第二次才说明第一帧已经交出去。宿主在那之前把窗口停在**屏幕外**
+   *   （见 `FloatingLayout.ParkOffScreen`），早发一次就等于提前把空壳 / 阴影摊在用户眼前。
+   */
+  requestAnimationFrame(() => requestAnimationFrame(() => api.bootReady()))
 }
 
 bootstrap().catch((err: unknown) => {

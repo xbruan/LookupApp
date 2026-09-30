@@ -373,6 +373,8 @@ namespace Lookup.App
         public string LayoutInfo() { return "{}"; }
         public void SetLayout(string requestJson) { }
         public void SetShape(string regionsJson, string theme, bool focused) { }
+        /// <summary>`boot:ready` 是**悬浮窗**那一条（它启动时停在屏幕外，等页面首帧再摆回来）；管理窗不参与。</summary>
+        public void BootReady() { }
         public void DragPrepare() { }
         public void DragStart() { }
         public void DragMove(double? sentAtMs) { }

@@ -1524,7 +1524,7 @@ async function measureSample(voiceId: string, text: string): Promise<number> {
   const result: SpeakResult = await api.speak(text, { source: 'online', voiceId, loudness: 0 })
   if (!result.ok) throw new Error(result.message || '合成失败')
   /*
-   * 同源地址（https://lookup.local/__speak__/…），页面 CSP 的 connect-src 'self' 就够，
+   * 同源地址（https://lookup.invalid/__speak__/…），页面 CSP 的 connect-src 'self' 就够，
    * 不用给任何外部域开口子。
    */
   const response = await fetch(result.url)
@@ -2166,7 +2166,7 @@ async function measureSystemNeutralLevel(): Promise<number> {
     // gainDb: 0 = 这次合成不要叠增益，量中性电平（试听/播放那条路不传这个参数）
     const result: SpeakResult = await api.speak(text, { source: 'system', language, gainDb: 0 })
     if (!result.ok) throw new Error(result.message || '系统语音合成失败')
-    // 同源地址（https://lookup.local/__speak__/…），页面 CSP 的 connect-src 'self' 就够
+    // 同源地址（https://lookup.invalid/__speak__/…），页面 CSP 的 connect-src 'self' 就够
     const response = await fetch(result.url)
     if (!response.ok) throw new Error(`取音频失败（HTTP ${response.status}）`)
     const measured = await measureActiveDb(await response.arrayBuffer())

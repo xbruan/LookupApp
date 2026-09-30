@@ -118,7 +118,8 @@ Copy-Item (Join-Path $webRoot 'styles/*.css') (Join-Path $webStage 'styles')
 # 两者都是 **BSD 3-Clause**，而它对**二进制再分发**的要求是"随包的文档里必须带上版权声明、
 # 条件与免责声明"：包里少这几份就不是"没写全"，而是**违反它自己的许可**。
 # 五份都摆到包根上（Windows 上双击就能看）。
-# ⚠️ 加文件进来必须同步 `THIRD-PARTY.md` 开头那张对照表 —— `node tools/check-licenses.mjs` 盯着这件事。
+# ⚠️ 加文件进来必须同步 `THIRD-PARTY.md`（在那里按**包内文件名**点名它、并说明它是什么许可的全文）
+#    —— `node tools/check-licenses.mjs` 盯着这件事（文档点名的与这里搬的，两个方向都要对得上）。
 foreach ($lic in @(
     @{ From = (Join-Path $root 'LICENSE');                            To = 'LICENSE.txt' },
     @{ From = (Join-Path $root 'THIRD-PARTY.md');                     To = 'THIRD-PARTY.txt' },
@@ -132,12 +133,10 @@ foreach ($lic in @(
 
 # 打包标记（用户 2026-09 问"包里的 exe 时间还是 1:56 的，我不知道我耳朵测的是不是最新版"）：
 # `Copy-Item` / `Move-Item` **保留 mtime**、而 `dotnet build` 在没改 C# 源码时**不重新链接** ——
-# 所以**文件时间戳根本不能用来判断"这份包是不是最新"**。这里把"这一趟打包"的证据写进说明文件：
-# 打包时刻 + 两个二进制的 SHA256 前 12 位（与 `dist/win-x64/dsh_lookup.dll`、`bin/Release/net48`
-# 里那两份逐字节相同，脚本第 ④ 步已经核过）。
-$exeHash = (Get-FileHash (Join-Path $appDir 'LookupApp.exe') -Algorithm SHA256).Hash
+# 所以**文件时间戳根本不能用来判断"这份包是不是最新"**，这一份里写"这一趟打包"的时刻。
+# ⚠️ 正文是**纯文本**（用户双击用记事本看）：不许出现 Markdown 标记。
 Set-Content -Path (Join-Path $appDir '使用说明.txt') -Encoding UTF8 -Value @"
-LookupApp · 悬浮 MDict 词典  v$Version（内核 C 重写版）
+LookupApp · 悬浮 MDict 词典  v$Version
 
 运行「LookupApp.exe」即可，不需要安装。
 
@@ -148,23 +147,15 @@ LookupApp · 悬浮 MDict 词典  v$Version（内核 C 重写版）
 
 词库
   在悬浮窗左侧小图标上点右键 -> 「选项」->「词库」，选「添加词典文件」，选择硬盘上的 .mdx 文件。
-  同目录同名的 .mdd / .1.mdd / .2.mdd 资源库会自动关联。
-  不带 .mdd 的词典（样式表 / 脚本 / 字体 / 图片放在 .mdx 旁边同一个目录）也能用。
-  ⚠️ 这一版**会执行词典自带的 .js**（在隔开的沙箱里跑）；.mjs / .html / .htm 仍不执行。
+  同目录同名的 .mdd / .1.mdd / .2.mdd / .x.mdd / .js 脚本 和 字体 资源会自动关联。
+  ⚠️ 词典自带的 .js 在隔离沙箱中运行。
 
 设置与历史
-  存放在 %APPDATA%\LookupApp\settings.json（**全 ASCII 的目录名**）。
-  旧版本用的是 %APPDATA%\查词 —— 第一次运行本版时，会把那个目录里的设置与历史
-  **复制**一份到新目录（旧目录原样保留，参考实现系列还在用它），
-  所以词库列表、查词历史、悬浮窗位置都会原样带过来。
-  选项窗口的「常规」页里能定：开机自动启动、启动时显不显示悬浮窗、
-  关闭悬浮窗时怎么办，以及一键打开上面这个目录。
-  （「启动时不显示悬浮窗」意思是：程序照常启动、托盘图标还在，只是不摆出胶囊 ——
-    要它的时候在托盘图标上点右键选「显示悬浮窗」，或者双击托盘图标。）
+  存放在 %APPDATA%\LookupApp\settings.json（全 ASCII 的目录名）。
 
-目录结构（别把 web 这个目录删掉）
+目录结构
   LookupApp.exe        主程序
-  dsh_lookup.dll      词典内核（查词 / 解析 / 发音 / 翻译都在这儿）
+  dsh_lookup.dll      词典内核（查词 / 解析 / 发音 / 翻译）
   Lookup.*.dll        外壳与接口代码绑定
   web\                界面资源（页面 / 脚本 / 样式）
 
@@ -174,13 +165,10 @@ LookupApp · 悬浮 MDict 词典  v$Version（内核 C 重写版）
     · 内嵌的 libspeex（用来播词典自带的 .spx 录音）—— 全文见 libspeex-COPYING.txt；
     · 随包分发的 Microsoft WebView2（界面渲染用）—— 全文见 WebView2-LICENSE.txt，
       另有上游声明 WebView2-NOTICE.txt。
-  其余第三方情况（含"哪些没随包分发"）见 THIRD-PARTY.txt。
-  再分发本包时请把这五份文件一起带上。
+  本包内的第三方组件详情见 THIRD-PARTY.txt。
 
-这一份是什么时候打的（**判断"是不是最新"请看这里，别看文件时间**）
-  打包时间   $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))
-  LookupApp.exe  SHA256 $($exeHash.Substring(0,12))…
-  dsh_lookup.dll SHA256 $($fresh.Hash.Substring(0,12))…
+打包时间
+  $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))
 "@
 
 # ── ⑤ 资源清单自检 + 清单存档 ────────────────────────────────────────────────

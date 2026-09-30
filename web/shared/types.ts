@@ -246,6 +246,12 @@ export interface FloatingApi {
    * focused 只用来加深投影 —— 焦点提示不做彩色描边。
    */
   setShape(regions: ShapeRect[], theme?: 'light' | 'dark', focused?: boolean): void
+  /**
+   * 首帧已经出来了（页面在 bootstrap 末尾等**两次** rAF 才发）。
+   * 主进程在那之前把窗口停在**屏幕外** —— 不然用户会先看到一层空壳 / 阴影，再看到真正的内容。
+   * 发完不管，没有回值。
+   */
+  bootReady(): void
   getLayoutInfo(): Promise<LayoutInfo>
   /**
    * 拖拽分三步：prepare 在指针按下时记录起点（保证拖动像素精确、不吃掉阈值位移），
@@ -555,7 +561,7 @@ export interface DictSample {
   language: string
   languageLabel: string
   /**
-   * 词典原录音的同源地址（`https://lookup.local/__sound__/<词典 id>/<mdd 键名>`），
+   * 词典原录音的同源地址（`https://lookup.invalid/__sound__/<词典 id>/<mdd 键名>`），
    * 直接 `fetch` 就能拿到字节（CSP 的 connect-src 'self' 够用）也带 Range；
    * 与 `api.speak(text, { source: 'dict' })` 回的那个 url 是同一种形式。
    */
@@ -614,8 +620,8 @@ export interface SpeakResult {
   ok: boolean
   /**
    * 可播放地址。两种前缀，播放侧一视同仁（都是本进程内的应答）：
-   *   https://lookup.local/__speak__/…  合成/下载来的音频（按内容缓存）
-   *   https://lookup.local/__sound__/…  词典自带的原录音（现取）
+   *   https://lookup.invalid/__speak__/…  合成/下载来的音频（按内容缓存）
+   *   https://lookup.invalid/__sound__/…  词典自带的原录音（现取）
    */
   url: string
   mime: string

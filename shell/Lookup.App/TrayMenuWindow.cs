@@ -315,6 +315,8 @@ namespace Lookup.App
         }
         /// <summary>`shape:set` 到托盘菜单这一种情况：参考实现里它也只用来调一下 Region</summary>
         public void SetShape(string regionsJson, string theme, bool focused) { ApplyRegion(); }
+        /// <summary>`boot:ready` 是**悬浮窗**那一条；托盘菜单的尺寸由页面 `traymenu:measured` 决定，不走这条。</summary>
+        public void BootReady() { }
 
         /* 窗口级（悬浮窗那套）：托盘菜单不参与 */
         public string LayoutInfo() { return "{}"; }

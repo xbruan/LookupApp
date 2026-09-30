@@ -111,6 +111,14 @@
     setShape: function (regions, theme, focused) {
       send('shape:set', regions, theme || 'light', !!focused)
     },
+    /**
+     * 首帧已经出来了（页面在 bootstrap 末尾等**两次** rAF 才发）。
+     * 主进程在那之前把窗口停在**屏幕外**：不然用户会先看到一层空壳 / 阴影，再看到真正的内容。
+     * 发完不管（没有回值）。
+     */
+    bootReady: function () {
+      send('boot:ready')
+    },
     dragPrepare: function () {
       send('drag:prepare')
     },

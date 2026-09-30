@@ -16,11 +16,13 @@
  * 包里有两处 BSD 3-Clause 的东西（内嵌的 libspeex、随包分发的 WebView2 DLL），
  * 按它的**二进制再分发**条款，随包的文档里必须带上版权声明、条件与免责声明 ——
  * 也就是说"包里有几份许可文件"这件事是**硬要求**，不能靠记性。
- * `tools/package.ps1` 第 ④ 步是唯一搬它们的地方，`THIRD-PARTY.md` 开头那张对照表是唯一
- * 说明它们叫什么的地方。这一条把**两边对起来比**，两个方向都查：
- *   · 搬了但清单里没写 → 红（清单不许漏说一份随包文件）；
- *   · 清单里写了但没搬 → 红（包里那份根本不存在）。
- * 另外这条也顺手钉住"`THIRD-PARTY.md` 里不许出现仓库相对链接"—— 它同样会被原样搬进包。
+ * `tools/package.ps1` 第 ④ 步是唯一搬它们的地方，`THIRD-PARTY.md` 是唯一声明它们叫什么的地方
+ * （按**包内文件名**逐个点名；`THIRD-PARTY.txt` 自己不必点自己）。这一条把**两边对起来比**，
+ * 两个方向都查：
+ *   · 搬了但文档里没点名 → 红（拿了别人的东西却不声明）；
+ *   · 文档里点了但没搬 → 红（包里的说明指向一个不存在的文件）。
+ * 另外这条也顺手钉住"`THIRD-PARTY.md` 里不许出现仓库相对链接"—— 它同样会被原样搬进包；
+ * ⑤ 再钉住"它必须是**纯文本**"（不许 Markdown 标记），理由同上。
  *
  * 用法：
  *   node tools/check-licenses.mjs                                    # 有问题 → 退出码 1
@@ -117,7 +119,7 @@ if (thirdParty === null) {
     problems.push(
       `\`THIRD-PARTY.md\` 第 ${line} 行有仓库相对链接 \`](${target})\` —— ` +
       `这个文件会被**原样搬进便携包当 \`THIRD-PARTY.txt\`**，那种链接在包里是死链。` +
-      `改成开头那张"仓库里叫 / 包里叫"的对照表。`
+      `要指东西，直接写它**在包里的文件名**（\`libspeex-COPYING.txt\` 这样的字样）。`
     )
   }
 }
@@ -148,48 +150,74 @@ if (pkg === null) {
   }
 }
 
-// ── ④ 对照表第 3 列 vs `package.ps1` 的 To：**两个方向都要对得上** ──────────
+// ── ④ 文档点名的许可文件 vs `package.ps1` 真搬的：**两个方向都要对得上** ──────
+/*
+ * 判据是"**包内文件名**"（文档里写出来的 `xxx.txt` 这样的字样，**不带任何标记** —— 见 ⑤），
+ * 不是仓库路径：这份文档会被原样搬成 `.txt` 给人看，读它的人手里只有包，只认包里的文件名。
+ * `THIRD-PARTY.txt` 自己不必点自己（它就是这份文档本身），豁免。
+ */
 if (thirdParty !== null && shipped.size > 0) {
-  const documented = new Map() // 包里叫 → 行号
-  let rows = 0
+  const mentioned = new Map() // 包内文件名 → 行号
   thirdParty.split('\n').forEach((line, i) => {
-    const m = line.match(/^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$/)
-    if (!m) return
-    const [, a, , c] = m
-    if (a === '提到的东西' || /^-+$/.test(a)) return
-    rows++
-    const name = c.match(/^`([^`]+\.txt)`$/)
-    if (name) documented.set(name[1], i + 1)
+    for (const m of line.matchAll(/\b([A-Za-z0-9_.-]+\.txt)\b/g)) {
+      if (!mentioned.has(m[1])) mentioned.set(m[1], i + 1)
+    }
   })
-  if (rows === 0) {
+  if (mentioned.size === 0) {
     problems.push(
-      '`THIRD-PARTY.md` 开头那张"提到的东西 / 在仓库里叫 / 在便携包里叫"**三列对照表解析不到** —— ' +
+      '`THIRD-PARTY.md` 里**一个包内许可文件都没点名**（一个 `xxx.txt` 字样都没有）—— ' +
       '**本检查宁可变红，也不许"没查到就当没有"。**'
     )
   }
   for (const [to] of shipped) {
-    if (!documented.has(to)) {
+    if (to === 'THIRD-PARTY.txt') continue // 文档不必自己点自己
+    if (!mentioned.has(to)) {
       problems.push(
-        `包里会多出 \`${to}\`（\`package.ps1\` 搬了它），但 \`THIRD-PARTY.md\` 的对照表里**没写**它 —— ` +
+        `包里会多出 \`${to}\`（\`package.ps1\` 搬了它），但 \`THIRD-PARTY.md\` **没点名**它 —— ` +
         `拿了别人的东西却不声明，正是这一条要挡的事。`
       )
     }
   }
-  for (const [name, line] of documented) {
+  for (const [name, line] of mentioned) {
     if (!shipped.has(name)) {
       problems.push(
-        `\`THIRD-PARTY.md\` 第 ${line} 行说包里有一份 \`${name}\`，但 \`package.ps1\` **没搬**它 —— ` +
+        `\`THIRD-PARTY.md\` 第 ${line} 行点了 \`${name}\`，但 \`package.ps1\` **没搬**它 —— ` +
         `包里的说明指向一个不存在的文件。`
       )
     }
   }
-  notes.push(`随包许可文件：${shipped.size} 份（清单与 \`package.ps1\` 一致）`)
+  notes.push(`随包许可文件：${shipped.size} 份（文档里逐个点名，与 \`package.ps1\` 一致）`)
+}
+
+// ── ⑤ 这份文档是**纯文本**：它会被原样搬成 `THIRD-PARTY.txt` 给人（常常是记事本）看 ──
+/*
+ * Markdown 标记在 `.txt` 里不会渲染 —— 用户双击看到的是字面上的 `#` 与反引号。
+ * 真发生过：改写这份文档时通篇用了 `##` 标题与反引号包起来的文件名，发出去的 `.txt`
+ * 里那些符号全都原样显示出来了。
+ */
+if (thirdParty !== null) {
+  thirdParty.split('\n').forEach((line, i) => {
+    if (/^\s{0,3}#{1,6}\s/.test(line)) {
+      problems.push(
+        `\`THIRD-PARTY.md\` 第 ${i + 1} 行是 Markdown 标题（\`${line.trim()}\`）—— ` +
+        `它会被原样搬成 \`THIRD-PARTY.txt\`，在那里 \`#\` 不会渲染，只会原样显示。`
+      )
+    }
+  })
+  if (thirdParty.indexOf('`') >= 0) {
+    problems.push(
+      '`THIRD-PARTY.md` 里有反引号 —— 那份 `.txt` 是纯文本，反引号只会原样显示出来（去掉它，直接写文件名）。'
+    )
+  }
+  if (thirdParty.indexOf('**') >= 0) {
+    problems.push('`THIRD-PARTY.md` 里有 `**`（Markdown 加粗）—— 同上，`.txt` 里不会渲染。')
+  }
 }
 
 // ── 实测结果 ────────────────────────────────────────────────────────────────
 console.log(`许可与第三方声明检查（根：${path.relative(HERE, ROOT) || '.'}）：`)
 if (license !== null) console.log('  · LICENSE        逐字等于 MIT 全文（只许换版权那一行），且纯 ASCII')
-if (thirdParty !== null) console.log('  · THIRD-PARTY.md 无仓库相对链接；对照表与 package.ps1 双向对齐')
+if (thirdParty !== null) console.log('  · THIRD-PARTY.md 纯文本无 Markdown 标记；无仓库相对链接；点名的许可文件与 package.ps1 双向对齐')
 for (const n of notes) console.log(`  · ${n}`)
 
 if (problems.length > 0) {
@@ -199,8 +227,10 @@ if (problems.length > 0) {
   console.log('怎么修：')
   console.log('  · `LICENSE` 被塞了东西：把多出来的那一段**搬**进 `THIRD-PARTY.md`（不是删掉），')
   console.log('    再把 `LICENSE` 恢复成本文件顶部那份全文（只留版权那一行不同）。')
-  console.log('  · 包里那份跟清单对不上：`tools/package.ps1` 第 ④ 步与 `THIRD-PARTY.md`')
-  console.log('    开头那张对照表，**同一件事的两处写法，改一处就要改另一处**。')
+  console.log('  · 包里那份跟文档对不上：`tools/package.ps1` 第 ④ 步搬哪些、`THIRD-PARTY.md`')
+  console.log('    点名哪些（写 `xxx.txt` 这样的字样），**同一件事的两处写法，改一处就要改另一处**。')
+  console.log('  · 文档里混进了 Markdown 标记（`#` / 反引号 / `**`）：那份 `.txt` 是给人在记事本里')
+  console.log('    看的，标记不会渲染、只会原样显示 —— 去掉标记，用缩进和空行分块。')
   console.log('')
   console.log(`✗ 许可检查：${problems.length} 处不合格`)
   process.exit(1)

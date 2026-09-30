@@ -28,7 +28,7 @@
 | **真实程序** | 真起一个程序来验，不是模拟 | `tools/test-shell-app.ps1` |
 | **宿主程序** | 承载界面并把它显示出来的那个真实程序（`host`） | `shell/Lookup.App` |
 | **通信桥** | 页面与宿主程序之间传消息的那条通道 | `web/bridge.js` |
-| **虚拟主机** | 把本地文件当成一个网址来提供，页面按网址加载 | `https://lookup.local/…` |
+| **虚拟主机** | 把本地文件当成一个网址来提供，页面按网址加载 | `https://lookup.invalid/…` |
 | **DLL** | Windows 上的动态链接库，程序运行时才加载进来的代码文件 | `dist/win-x64/dsh_lookup.dll` |
 | **交叉编译** | 在一种系统里编出另一种系统能用的程序 | 在 WSL（Linux）里编 Windows 用的 DLL |
 | **ASan / UBSan** | 编译器自带的两把"放大镜"：ASan 查内存越界与泄漏，UBSan 查未定义行为 | `tools/wsl-make-test.sh asan` |
@@ -166,7 +166,7 @@ tests/                         内核自带的单元测试（不用任何测试�
   entry_doc_vectors.h           【自动生成】词条正文标准答案表
 Makefile                       在 WSL / Linux 下构建
 
-../web/                        界面（虚拟主机 https://lookup.local/… 的根目录）
+../web/                        界面（虚拟主机 https://lookup.invalid/… 的根目录）
 ../shell/                      各平台宿主（这一版只有 Windows）
   Lookup.Interop/              【部分自动生成】C# 绑定
   Lookup.Host/                 操作系统相关那一半：VirtualHost + ShellAssets + Dispatch

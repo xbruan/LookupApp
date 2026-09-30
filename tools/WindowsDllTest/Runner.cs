@@ -548,7 +548,7 @@ namespace Lookup.Interop.TestHarness
                 Ok(!VirtualHost.TryParseRange("", 100, out rs, out rl, out unsat),
                    "Range：没有这个头 → false");
 
-                // ── ⑦ 外壳自己的站点（lookup.local → ShellAssets）──────────
+                // ── ⑦ 外壳自己的站点（VirtualHost.ShellDomain → ShellAssets）──────────
                 /* 与词典资源域分开的理由是信任边界：外壳的资源是我们自己发的（可以放行脚本），
                  * 词典的资源是外部内容（只放行被动资源）。这里在临时目录里搭一份前端产物来验那条路，
                  * 含四道 gate 里最要紧的两道（.. 与绝对路径）。
@@ -566,7 +566,7 @@ namespace Lookup.Interop.TestHarness
 
                 var shellDoc = VirtualHost.Serve(engine, new VirtualRequest
                 {
-                    Url = "https://lookup.local/floating.html"
+                    Url = "https://" + VirtualHost.ShellDomain + "/floating.html"
                 }, shell);
                 Ok(shellDoc.Status == 200 && shellDoc.ContentType.StartsWith("text/html"),
                    "壳站点：floating.html 回 200 + text/html");
@@ -575,34 +575,34 @@ namespace Lookup.Interop.TestHarness
 
                 var shellDefault = VirtualHost.Serve(engine, new VirtualRequest
                 {
-                    Url = "https://lookup.local/"
+                    Url = "https://" + VirtualHost.ShellDomain + "/"
                 }, shell);
                 Ok(shellDefault.Status == 200 && shellDefault.ContentType.StartsWith("text/html"),
                    "壳站点：根路径给默认文档（floating.html）");
 
                 var shellJs = VirtualHost.Serve(engine, new VirtualRequest
                 {
-                    Url = "https://lookup.local/app.js"
+                    Url = "https://" + VirtualHost.ShellDomain + "/app.js"
                 }, shell);
                 Ok(shellJs.Status == 200 && shellJs.ContentType.StartsWith("text/javascript"),
                    "壳站点：.js 的 MIME 是 text/javascript（**外壳**可以发脚本）");
 
                 var shellCss = VirtualHost.Serve(engine, new VirtualRequest
                 {
-                    Url = "https://lookup.local/sub/a.css"
+                    Url = "https://" + VirtualHost.ShellDomain + "/sub/a.css"
                 }, shell);
                 Ok(shellCss.Status == 200 && shellCss.ContentType.StartsWith("text/css"),
                    "壳站点：子目录里的 .css 也发得出来");
 
                 var shellFavicon = VirtualHost.Serve(engine, new VirtualRequest
                 {
-                    Url = "https://lookup.local/favicon.ico"
+                    Url = "https://" + VirtualHost.ShellDomain + "/favicon.ico"
                 }, shell);
                 Ok(shellFavicon.Status == 404, "壳站点：favicon 静静回 404（浏览器每次都来要）");
 
                 var shellMissing = VirtualHost.Serve(engine, new VirtualRequest
                 {
-                    Url = "https://lookup.local/nope.html"
+                    Url = "https://" + VirtualHost.ShellDomain + "/nope.html"
                 }, shell);
                 Ok(shellMissing.Status == 404, "壳站点：不存在的页面回 404");
 
@@ -622,10 +622,10 @@ namespace Lookup.Interop.TestHarness
                 var dotted = shell.Serve("a..b.css");
                 Ok(dotted.Status == 200, "壳站点：`a..b.css` 是合法文件名（逐段判，不是包含式判）");
 
-                // 没配外壳目录时：lookup.local 要回一句人话，而不是「不是词典域」
+                // 没配外壳目录时：外壳站点要回一句人话，而不是「不是词典域」
                 var noShell = VirtualHost.Serve(engine, new VirtualRequest
                 {
-                    Url = "https://lookup.local/floating.html"
+                    Url = "https://" + VirtualHost.ShellDomain + "/floating.html"
                 });
                 Ok(noShell.Status == 404 && noShell.Reason != null &&
                        noShell.Reason.Contains("外壳资源目录"),
@@ -893,7 +893,7 @@ namespace Lookup.Interop.TestHarness
                         Ok(speakUrl != null && speakUrl.StartsWith(
                                "https://" + VirtualHost.ShellDomain + VirtualHost.SpeechRoute,
                                StringComparison.Ordinal),
-                           "★ 回的地址挂在外壳站点下（`https://lookup.local/__speech__/<键>`）");
+                           "★ 回的地址挂在外壳站点下（`https://" + VirtualHost.ShellDomain + "/__speech__/<键>`）");
 
                         /* 那条地址真的发得出字节，而且发出来的是一份**结构自洽**的 WAV */
                         var served = VirtualHost.Serve(engine, new VirtualRequest { Url = speakUrl }, shell);
@@ -1303,6 +1303,8 @@ namespace Lookup.Interop.TestHarness
             {
                 WindowCalls.Add("shape:set " + regionsJson + " theme=" + theme + " focused=" + focused);
             }
+            /// <summary>`boot:ready`：这条桩只记账 —— 它验的是"消息走到了宿主"（摆窗口那半在壳里）。</summary>
+            public void BootReady() { WindowCalls.Add("boot:ready"); }
             public void DragPrepare() { WindowCalls.Add("drag:prepare"); }
             public void DragStart() { WindowCalls.Add("drag:start"); }
             public void DragMove(double? sentAtMs) { WindowCalls.Add("drag:move " + sentAtMs); }

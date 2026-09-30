@@ -87,6 +87,12 @@ namespace Lookup.Host
         /// <summary>`shape:set`（发完不管）：`[{x,y,w,h,r,fill,border},…]` + 主题 + 有没有焦点</summary>
         void SetShape(string regionsJson, string theme, bool focused);
 
+        /// <summary>
+        /// `boot:ready`：渲染进程首帧已经出来了（页面在 bootstrap 末尾等两次 rAF 才发）。
+        /// 宿主据此把**启动时停在屏幕外**的悬浮窗一次摆回真实位置 —— 早了就会先露出空壳 / 阴影。
+        /// </summary>
+        void BootReady();
+
         void DragPrepare();
         void DragStart();
         void DragMove(double? sentAtMs);
@@ -214,6 +220,7 @@ namespace Lookup.Host
         }
         public void SetLayout(string requestJson) { /* 没有窗口要摆的 */ }
         public void SetShape(string regionsJson, string theme, bool focused) { }
+        public void BootReady() { }
         public void DragPrepare() { }
         public void DragStart() { }
         public void DragMove(double? sentAtMs) { }

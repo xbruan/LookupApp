@@ -5,7 +5,7 @@
 
     现在的成员：
       · VirtualHost.cs   虚拟资源主机（`https://<词典 id>.dictres.invalid/…` → 内核；
-                         另加 `https://lookup.local/__speech__/<键>` 发合成的语音）
+                         另加 `https://lookup.invalid/__speech__/<键>` 发合成的语音）
       · Dispatch.cs      桥上的方法分发（所有业务判断都在内核，这里只转发）
       · Speech.cs        **系统离线语音**（`System.Speech` / SAPI）+ 合成结果的暂存
 

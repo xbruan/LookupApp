@@ -12,7 +12,7 @@ namespace Lookup.App
     /// **WebView2 ↔ 宿主适配层**：只做两件事 —— `WebResourceRequested` → `VirtualHost.Serve`、
     /// `WebMessageReceived` → `Dispatch.Handle`。**一行路由判断都不许有**（不解析 URL、不看方法名）：
     /// 一旦出现 `if (url.Contains("__sound__"))`，壳里就长出了第二份业务约定。
-    /// ⚠️ 只拦 `lookup.local` 与 `&lt;词典 id&gt;.dictres.invalid` 两个虚拟站点，其余 http/https 一律 `403`
+    /// ⚠️ 只拦 `lookup.invalid` 与 `&lt;词典 id&gt;.dictres.invalid` 两个虚拟站点，其余 http/https 一律 `403`
     /// （记在 <see cref="BlockedUrls"/> 里）—— 理由是**信任边界**：词条正文是外部内容，放行它里面
     /// 一个 `&lt;img src="https://某处/像素.png"&gt;` 就等于把"用户查了什么词"发出去；非 http(s) 的
     /// （`about:` / `data:` / `blob:`）**一律不碰**，拦它们只会把播放器和内联资源弄坏。
@@ -225,9 +225,9 @@ namespace Lookup.App
              *
              * 桥是"操作系统能力"的入口（写剪贴板 / 挑文件 / 发 HTTP / 摆窗口），所以"谁有资格调它"
              * 得是一条**说得清、测得出来**的边界 —— 判据就是**发送这条消息的文档在哪个源上**。
-             * 只有外壳自己的页面住在 `https://lookup.local`（见 `VirtualHost.ShellDomain`）；
+             * 只有外壳自己的页面住在 `https://lookup.invalid`（见 `VirtualHost.ShellDomain`）；
              * 词条正文与译文页住在 `*.dictres.invalid`（**另一个源**），它们的 CSP 是 `default-src 'self'`，
-             * 连 `lookup.local/bridge.js` 都取不到，本来就不该、也不能调桥。
+             * 连 `lookup.invalid/bridge.js` 都取不到，本来就不该、也不能调桥。
              *
              * ⚠️ 说清这一条**是什么、不是什么**：它是**纵深防御**（万一以后哪个页面把 bridge.js
              * 带进了词典域，或者多开了一扇没想清楚的窗，这里会当场挡住并留下证据），

@@ -1,4 +1,4 @@
-﻿namespace Lookup.App
+namespace Lookup.App
 {
     using System;
     using System.Collections.Generic;
@@ -54,6 +54,16 @@
         /// <summary>失焦之后多久自动吸边</summary>
         private const int AutoAbsorbDelayMs = 1000;
         private readonly Timer _autoAbsorbTimer;
+
+        /// <summary>等页面首帧的兜底时长（毫秒）：页面万一没发 `boot:ready`，到点照样摆出来</summary>
+        private const int RevealFallbackMs = 3000;
+        /// <summary>
+        /// 页面首帧还没出来时窗口停在**屏幕外**的落点（`null` = 已经在真实位置）。
+        /// ★ 为什么是"屏幕外"而不是"藏起来"：藏起来的窗口 WebView2 不渲染（rAF 不跑），
+        ///   页面那声 `boot:ready` 就永远等不到；屏幕外 + 仍是显示状态才两全。
+        /// </summary>
+        private Point? _parkAt;
+        private Timer _revealTimer;
 
         internal FloatingLayout(Form form, Action<string, string> emit)
         {
@@ -405,9 +415,56 @@
             });
         }
 
+        /// <summary>
+        /// 启动时把窗口停到**屏幕外**，等页面报"首帧已经出来了"（`boot:ready`）再摆回真实位置。
+        /// ⚠️ 必须在窗口**显示之前**调（`Application.Run` 会按当前位置把窗口显示出来）。
+        /// ★ 这是"打开先闪一层阴影 / 空壳"那个毛病的堵法：承载窗口与外壳层**一起**停在屏幕外，
+        ///   页面首帧一到，<see cref="RevealAfterBoot"/> 在同一轮里把两层一起摆回来 ——
+        ///   用户看到的第一帧就已经是完整内容，而不是"先空壳、再内容"。
+        /// </summary>
+        internal void ParkOffScreen()
+        {
+            var screen = SystemInformation.VirtualScreen;
+            _parkAt = new Point(screen.Right + 400, screen.Top + 40);
+            ApplyLayout(false);
+
+            /*
+             * 兜底表：页面万一没发 `boot:ready`（脚本报错 / 环境怪），到点照样摆出来 ——
+             * 宁可晚一点看到，也不能让用户以为程序没启动。
+             */
+            if (_revealTimer == null)
+            {
+                _revealTimer = new Timer { Interval = RevealFallbackMs };
+                _revealTimer.Tick += delegate
+                {
+                    _revealTimer.Stop();
+                    RevealAfterBoot();
+                };
+            }
+            _revealTimer.Stop();
+            _revealTimer.Start();
+        }
+
+        /// <summary>
+        /// `boot:ready`：页面首帧出来了 —— 把窗口从屏幕外摆回真实位置。
+        /// ⚠️ 必须走 <see cref="ApplyLayout"/>（宿主窗口与外壳层都在它里面摆），
+        ///    单独挪宿主会把投影留在屏幕外（或反过来）。
+        /// </summary>
+        internal void RevealAfterBoot()
+        {
+            if (_revealTimer != null) _revealTimer.Stop();
+            if (!_parkAt.HasValue) return;
+            _parkAt = null;
+            ApplyLayout(false);
+        }
+
         /// <summary>显示：先把几何摆好再 Show，然后补一次布局（顺序不能反）</summary>
         internal void ShowWindow(bool focusInput)
         {
+            /* ★ 用户要它，就必须出现在真实位置：先解除"停在屏幕外"（不管首帧信号来没来）。 */
+            if (_revealTimer != null) _revealTimer.Stop();
+            _parkAt = null;
+
             if (_absorbed) ExpandFromEdge();
             else ClampPillIntoWorkArea();
 
@@ -650,20 +707,31 @@
                 applied = a;
             }
 
-            if (bounds != _physicalBounds)
+            /*
+             * ★ 页面首帧还没出来时（`_parkAt` 非空）窗口停在屏幕外：**几何照常按真实矩形算**
+             *   （Region / 页面拿到的 `layout:applied` 都不受影响），真正 SetWindowPos 的是屏幕外那一点。
+             *   首帧一到，`RevealAfterBoot` 把它一次摆回来。
+             */
+            var place = _parkAt.HasValue
+                ? new Rectangle(_parkAt.Value.X, _parkAt.Value.Y, bounds.Width, bounds.Height)
+                : bounds;
+
+            if (place != _physicalBounds)
             {
-                _physicalBounds = bounds;
-                Native.SetWindowPos(_form.Handle, IntPtr.Zero, bounds.X, bounds.Y, bounds.Width, bounds.Height,
+                _physicalBounds = place;
+                Native.SetWindowPos(_form.Handle, IntPtr.Zero, place.X, place.Y, place.Width, place.Height,
                     Native.SWP_NOZORDER | Native.SWP_NOACTIVATE | Native.SWP_NOCOPYBITS);
             }
 
-            ApplyRegion(bounds, _regions);
+            ApplyRegion(place, _regions);
 
             /*
              * 外壳层也要跟着走：窗口挪了/尺寸变了，投影得跟过去。
              * ⚠️ 这里**每一帧都调**（哪怕位图能复用）—— 拖动时窗口一直在动，分层位图跟着窗口走就够。
+             * ⚠️ 传的是 `place`（**真实窗口矩形**）：停在屏幕外时外壳必须跟着停 ——
+             *    只挪宿主不挪它，投影就会孤零零留在屏幕上（那正是"先闪一层阴影"的现场）。
              */
-            UpdateChrome(bounds, _regions);
+            UpdateChrome(place, _regions);
 
             if (!_appliedSent || _applied != applied)
             {

@@ -7,13 +7,13 @@ namespace Lookup.Host
     using System.Text;
 
     /// <summary>
-    /// 外壳页面（HTML / CSS / JS / 字体图标）的取用入口 —— 由 `https://lookup.local/…` 那条虚拟站点用它。
+    /// 外壳页面（HTML / CSS / JS / 字体图标）的取用入口 —— 由 `https://lookup.invalid/…` 那条虚拟站点用它。
     /// 与词典资源域（`*.dictres.invalid`，走内核）分开是**信任边界**：外壳的资源是我们自己发的、可以放行脚本，
     /// 词典的资源是外部内容、只放行被动资源（见 `dict/dsh_sibling.c` 顶上那段）。从根目录读而不嵌 exe：改前端不用重编 C#，能直接驱动这一层。
     /// </summary>
     internal sealed class ShellAssetSource
     {
-        /// <summary>外壳资源的根目录；null = 这一版不提供壳资源（`lookup.local` 一律 404）</summary>
+        /// <summary>外壳资源的根目录；null = 这一版不提供壳资源（`lookup.invalid` 一律 404）</summary>
         internal string Root;
 
         /// <summary>路径是空的时候给哪一份文档（浏览器地址栏只打域名时）</summary>
@@ -64,7 +64,7 @@ namespace Lookup.Host
             {
                 res.Status = 404;
                 res.ReasonPhrase = "Not Found";
-                res.Reason = "这一版没有配置外壳资源目录（lookup.local 上没有东西可发）";
+                res.Reason = "这一版没有配置外壳资源目录（lookup.invalid 上没有东西可发）";
                 return res;
             }
 

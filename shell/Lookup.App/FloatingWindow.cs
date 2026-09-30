@@ -88,6 +88,14 @@ namespace Lookup.App
                  */
                 var handle = Handle;
                 _layout.SetLayoutInitial();
+                /*
+                 * ★ **再摆到屏幕外**：几何已经算好了（Region / 布局 / 外壳都按真实矩形走），
+                 *    但在页面报"首帧已经出来了"（`boot:ready`）之前，窗口**停在屏幕外** ——
+                 *    于是用户不会先看到一层空壳 / 阴影再看到内容。见 `FloatingLayout.ParkOffScreen`。
+                 *    ⚠️ 必须是"屏幕外 + 仍在显示状态"，不能改成藏起来：藏起来的窗口 WebView2
+                 *       不渲染（rAF 不跑），页面那声 `boot:ready` 就永远等不到。
+                 */
+                _layout.ParkOffScreen();
             }
 
             /*
@@ -422,6 +430,9 @@ namespace Lookup.App
             ShapeReports++;
             _layout.SetShape(regionsJson, theme, focused);
         }
+
+        /// <summary>`boot:ready`：页面首帧出来了 —— 把停在屏幕外的窗口一次摆回真实位置（宿主与外壳层同一轮里一起挪）。</summary>
+        public void BootReady() { _layout.RevealAfterBoot(); }
         public void DragPrepare() { _layout.DragPrepare(); }
         public void DragStart() { _layout.DragStart(); }
         public void DragMove(double? sentAtMs) { _layout.DragMove(sentAtMs); }

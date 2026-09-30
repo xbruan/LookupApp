@@ -37,7 +37,7 @@ namespace Lookup.Host
 
     /// <summary>
     /// **虚拟资源主机**：把词条正文里 `https://&lt;词典 id&gt;.dictres.invalid/…` 的请求接到内核的
-    /// `resource` / `entry_document` / `audio_prepare` 上（外壳站点 `lookup.local` 下另有 `__speech__`）。
+    /// `resource` / `entry_document` / `audio_prepare` 上（外壳站点 `lookup.invalid` 下另有 `__speech__`）。
     /// `.invalid` 是 RFC 2606 保留的**永不解析**顶级域；词典 id 放在 host 位置，于是词条里
     /// `/images/a.png` 这类根相对路径经 `&lt;base&gt;` 解析后仍落在**同一本词典**上，请求永不离开进程。
     /// 三条路由：`/__entry__?word=…` → `entry_document`（动态生成，**不参与**协商缓存）；
@@ -48,18 +48,30 @@ namespace Lookup.Host
     internal static class VirtualHost
     {
         internal const string ResourceDomain = "dictres.invalid";
-        internal const string ShellDomain = "lookup.local";
+        /// <summary>
+        /// 外壳自己的虚拟站点名（宿主把这些页面当网址交给 WebView2）。
+        ///
+        /// ★ **不许用 `.local` 结尾的名字**（历史上是 `lookup.local`）：`.local` 是 mDNS / LLMNR 的
+        ///   保留名，解析要**等超时**才失败（本机实测 `Resolve-DnsName lookup.local` = 3312 ms、
+        ///   `Dns.GetHostEntry('lookup.local')` = 2743 ms），而 WebView2 **每新建一个页面都要过一遍主机解析** ——
+        ///   于是"启动后那两秒的空窗"与"第一次弹托盘菜单要等 2 秒"就是这么来的。换成 `.invalid`
+        ///   之后同一台机器实测：页面 `domInteractive` 2043 ms → **101 ms**、首次弹托盘菜单
+        ///   2131 ms → **220 ms**。
+        ///   `.invalid` 是 RFC 2606 保留顶级域，**保证**解析立即失败（本机 52~70 ms），
+        ///   与词典资源域 <see cref="ResourceDomain"/> 用的是同一种保留 TLD —— 两处一致才不会再踩。
+        /// </summary>
+        internal const string ShellDomain = "lookup.invalid";
         internal const string SoundRoute = "/__sound__/";
         internal const string EntryPath = "/__entry__";
 
         /// <summary>
-        /// 宿主**合成**出来的语音走这条路由（`https://lookup.local/__speech__/&lt;键&gt;`）——
+        /// 宿主**合成**出来的语音走这条路由（`https://lookup.invalid/__speech__/&lt;键&gt;`）——
         /// 桥那条通道的纪律是**字节不过桥**，音频一律由宿主发；而这一段不属于任何一本词典，
         /// 所以挂在外壳自己的站点下，与 `*.dictres.invalid` 分开。
         /// </summary>
         internal const string SpeechRoute = "/__speech__/";
 
-        /// <summary>这个 URL 是不是外壳自己的站点（`https://lookup.local/…`）</summary>
+        /// <summary>这个 URL 是不是外壳自己的站点（`https://lookup.invalid/…`）</summary>
         internal static bool IsShellUrl(string url, out string path)
         {
             path = null;
@@ -73,7 +85,7 @@ namespace Lookup.Host
         }
 
         /// <summary>
-        /// 这个 URL 是不是词典资源请求；是的话拆出词典 id / 路径 / 查询串。`lookup.local`（外壳自己的
+        /// 这个 URL 是不是词典资源请求；是的话拆出词典 id / 路径 / 查询串。`lookup.invalid`（外壳自己的
         /// 虚拟站点）**不算** —— 那是宿主自己的静态资源，归它自己发；这里只回一个明确的 404，
         /// 免得「外壳页面取不到」被误当成内核坏了。
         /// </summary>
@@ -109,23 +121,23 @@ namespace Lookup.Host
 
         /// <summary>
         /// 处理一次请求。两个虚拟站点分工明确：`*.dictres.invalid` 发**词典**的资源（走内核），
-        /// `lookup.local` 发**外壳自己**的页面（走 <paramref name="shell"/>）。这么分是**信任边界**：
+        /// `lookup.invalid` 发**外壳自己**的页面（走 <paramref name="shell"/>）。这么分是**信任边界**：
         /// 外壳的资源是我们自己发的、可以放行脚本；词典的资源是外部内容、只放行被动资源。
         /// </summary>
         internal static VirtualResponse Serve(IntPtr engine, VirtualRequest req,
                                               ShellAssetSource shell)
         {
-            // 外壳自己的站点：先判它，免得 `lookup.local` 被当成「不是词典域」的 404
+            // 外壳自己的站点：先判它，免得 `lookup.invalid` 被当成「不是词典域」的 404
             if (req != null && IsShellUrl(req.Url, out var shellPath))
             {
-                // ⚠️ 合成的语音**也**挂在 `lookup.local` 下，所以这一条必须排在「把路径交给外壳静态
+                // ⚠️ 合成的语音**也**挂在 `lookup.invalid` 下，所以这一条必须排在「把路径交给外壳静态
                 //    资源」**之前** —— 否则它会被当成不存在的静态文件去 404（「点了朗读没声音」）。
                 if (shellPath.StartsWith(SpeechRoute, StringComparison.Ordinal))
                 {
                     return ServeSpeech(shellPath.Substring(SpeechRoute.Length));
                 }
                 // ⚠️ **词典自带的原录音在外壳站点上还有第二个出口**：
-                //      `https://lookup.local/__sound__/<词典 id>/<mdd 键名>`
+                //      `https://lookup.invalid/__sound__/<词典 id>/<mdd 键名>`
                 // 外壳页面的 CSP 是 `default-src 'self'` —— 它取不到也放不了跨域的 dictres 录音，
                 // 所以同一条录音必须有两个出口：宿主页走这条，词条正文（跨源 iframe）走词典域那条；
                 // 两条落到**同一段实现**，检查标准只有一份。
@@ -154,7 +166,7 @@ namespace Lookup.Host
                     {
                         Status = 404,
                         ReasonPhrase = "Not Found",
-                        Reason = "这一版没有配置外壳资源目录（lookup.local 上没有东西可发）"
+                        Reason = "这一版没有配置外壳资源目录（lookup.invalid 上没有东西可发）"
                     };
                     none.Body = Encoding.UTF8.GetBytes(none.Reason);
                     return none;
@@ -225,7 +237,7 @@ namespace Lookup.Host
 
         /// <summary>
         /// **词典自带的那段录音**（`.mdd` 里的原录音）—— 两个出口共用的实现：宿主页的播放器走
-        /// `https://lookup.local/__sound__/&lt;词典 id&gt;/&lt;键名&gt;`，词条正文自己走词典域那条；
+        /// `https://lookup.invalid/__sound__/&lt;词典 id&gt;/&lt;键名&gt;`，词条正文自己走词典域那条；
         /// 分开是 CSP 的缘故。取字节 / 认格式 / 那句话只在这一处，两条路不会各说一套。
         /// </summary>
         internal static VirtualResponse ServeDictSound(IntPtr engine, string dictId, string key)
