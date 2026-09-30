@@ -140,32 +140,27 @@ LookupApp · 悬浮 MDict 词典  v$Version
 
 运行「LookupApp.exe」即可，不需要安装。
 
-依赖说明
-  界面由系统的 Microsoft Edge WebView2 运行时渲染。
-  Windows 11 以及装了新版 Edge 的 Windows 10 都自带，无需额外安装。
-  如果提示缺少运行时，按提示打开下载页面装一次即可。
+依赖
+  界面由系统的 Microsoft Edge WebView2 渲染：Windows 11 自带；Windows 10 若没装过，按提示装一次。
 
-词库
-  在悬浮窗左侧小图标上点右键 -> 「选项」->「词库」，选「添加词典文件」，选择硬盘上的 .mdx 文件。
-  同目录同名的 .mdd / .1.mdd / .2.mdd / .x.mdd / .js 脚本 和 字体 资源会自动关联。
-  ⚠️ 词典自带的 .js 在隔离沙箱中运行。
+词典
+  悬浮窗左侧小图标上点右键 -> 「选项」->「词库」->「添加词典文件」，选硬盘上的 .mdx 文件。
+  同目录同名的 .mdd / .1.mdd / .2.mdd / .x.mdd / .js / 字体 会自动关联。
 
-设置与历史
-  存放在 %APPDATA%\LookupApp\settings.json（全 ASCII 的目录名）。
+设置
+  存放在 %APPDATA%\LookupApp\settings.json。
 
-目录结构
+目录
   LookupApp.exe        主程序
   dsh_lookup.dll      词典内核（查词 / 解析 / 发音 / 翻译）
-  Lookup.*.dll        外壳与接口代码绑定
-  web\                界面资源（页面 / 脚本 / 样式）
+  Lookup.*.dll        外壳与接口
+  web\                界面资源
 
 许可
-  本程序以 MIT 许可发布 —— 全文见 LICENSE.txt。
-  两处第三方代码都按 BSD 3-Clause 授权：
-    · 内嵌的 libspeex（用来播词典自带的 .spx 录音）—— 全文见 libspeex-COPYING.txt；
-    · 随包分发的 Microsoft WebView2（界面渲染用）—— 全文见 WebView2-LICENSE.txt，
-      另有上游声明 WebView2-NOTICE.txt。
-  本包内的第三方组件详情见 THIRD-PARTY.txt。
+  本程序以 MIT 许可发布，全文见 LICENSE.txt。
+  第三方组件（内嵌 libspeex、随包分发的 Microsoft WebView2）均按 BSD 3-Clause 授权：
+  全文见 libspeex-COPYING.txt / WebView2-LICENSE.txt，上游声明见 WebView2-NOTICE.txt，
+  组件清单见 THIRD-PARTY.txt。
 
 打包时间
   $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))

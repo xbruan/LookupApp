@@ -1,23 +1,21 @@
 # LookupApp
 
 > 一个 Windows 桌面查词工具：读 **MDict 词典**（`.mdx` / `.mdd`），浮窗取词、词条发音、机器翻译、
-> 查词历史、词库管理。本仓库是 **0.2.1** 的源码 —— **C11 内核 + C# 外壳 + WebView2 界面**。
+> 查词历史、词库管理。
 >
-> 本仓库是**唯一的开发仓库**：版本用 Git 提交、标签与 Release 区分，不再按版本复制整棵工程目录。
-
-![悬浮窗](release/screenshots/screenshot-floating.png)
+> 本仓库是**唯一的开发仓库**
 
 ## 它做什么
 
 | 功能 | 说明 |
 | --- | --- |
-| **浮窗查词** | 常驻小窗，输入即查；正文里的链接、选中文字都能接着查；窗口能吸边、能收成胶囊 |
-| **词库管理** | 导入 / 移除 `.mdx`、多本词典共存、拖动排序、逐本展开看路径与大小、当前词典切换 |
-| **发音** | 三层音源，**顺序由内核定、用户不用选**：**词典自带录音**（`.mdd` 里的原录音）→ **在线语音**（要自备凭据，没填 Key 就用不上）→ **系统语音**（离线合成，没有网络也能念） |
-| **机器翻译** | 整词或整段译文，作为「伪词条」查到（需自备凭据，默认不联网） |
-| **查词历史** | 记录「词条 + 词典」，能回放；词典被移走 / 文件丢了会如实说明并给出恢复办法 |
-| **兜底通道** | 当前词典查不到时自动去别的词典「借查」，问不到才说没有 —— **「没问完」与「没有」绝不含糊** |
-| **托盘** | 托盘菜单（唤出胶囊 / 选项 / 退出）、查词窗与选项窗的键盘操作 |
+| **浮窗查词** | 常驻悬浮输入窗；支持正文链接跳转、选词续查 |
+| **词库管理** | 导入 / 移除 `.mdx`、排序、当前词典切换 |
+| **发音** | 词典自带录音（`.mdd` 里的原录音）→ 在线语音（仅支持豆包语音）→ 系统语音 |
+| **机器翻译** | 整词或整段译文（需自备凭据） |
+| **查词历史** | 记录「词条 + 词典」|
+| **兜底通道** | 当前词典查不到时自动去别的词典「借查」→ 机器翻译 |
+| **托盘** | 托盘菜单（唤出胶囊 / 选项 / 退出 / 开机自启） |
 
 <details>
 <summary>界面截图（点开看）</summary>
@@ -34,7 +32,7 @@
 
 ## 怎么装
 
-**免安装（推荐）**：到本仓库的 Releases 下载 `LookupApp-0.2.1-portable.zip`，解压到任意目录，
+**免安装**：到本仓库的 Releases 下载 `LookupApp-0.2.1-portable.zip`，解压到任意目录，
 双击 `LookupApp.exe` 即可。配置与缓存写在 `%APPDATA%\LookupApp`。
 
 **系统要求**
@@ -51,14 +49,11 @@
 - `.mdx`（词条库）、`.mdd`（资源库：图片 / 音频 / 样式）
 - **不带 `.mdd` 的词典**：`.mdx` 旁边散放的 `.css` / 字体 / 图片 / **`.js`** 也能读
   （样式与图片**先从 `.mdd` 里找**，里面没有才去旁边找）。
-  ⚠️ 放行的只有 `.js`；`.mjs` / `.html` / `.htm` **不放行**（词典是外部内容，信任边界只有一条）。
   设计依据见 [`docs/design/不带mdd的词典与机器翻译开发指导.md`](docs/design/不带mdd的词典与机器翻译开发指导.md)。
 - **加密与压缩的词典**：`Encrypted=1`（记录块）/ `Encrypted=2`（键信息块）、以及 zlib / LZO / 不压缩
-  三种词块都能读 —— 支持的**真实范围**不靠文档声称，靠**格式矩阵对照测试**钉住
-  （21 本合成词典覆盖「版本 × 压缩 × 编码 × 加密 × 索引形态 × 结构」，
-  见 [`tools/golden/fixtures.txt`](tools/golden/fixtures.txt)；其中 20 本与冻结基线逐字节相同，
-  1 本有 2 处**责任在参考实现**的已知差异，逐条记在
-  [`tools/golden/compare-golden.py`](tools/golden/compare-golden.py) 的 `WHITELIST` 里）。
+  三种词块都能读
+  （21 本合成测试用词典覆盖「版本 × 压缩 × 编码 × 加密 × 索引形态 × 结构」，
+  见 [`tools/golden/fixtures.txt`](tools/golden/fixtures.txt)
 
 ## 从源码构建
 
@@ -81,25 +76,20 @@ wsl.exe -- bash tools/build-windows-dll.sh /mnt/c/<本仓库的 WSL 路径> Rele
                                        # 编壳（产物：shell\Lookup.App\bin\Release\net48\Lookup.App.exe）
 ```
 
-跑起来看效果：把编出来的 `Lookup.App.exe`、`dsh_lookup.dll` 与 `web\` 摆在一起即可 ——
-⚠️ `web\` 与 exe 的相对位置别弄错（外壳是从 exe 所在目录**往上**找 `web/floating.html` 的）。
+把编出来的 `Lookup.App.exe`、`dsh_lookup.dll` 与 `web\` 放在同一目录下，
 要一个装好的便携包就跑 `powershell -File tools\package.ps1`。
 
-## 怎么验（本项目有五道分级检查 + 一道打包验收）
-
-判断标准只有一句：**这条测试需要什么才能判，就放在哪一级**；**能用一句话说清"这次只影响哪一层"，
-就不许去跑最贵的那一级**。
+## 如何测试（本项目有五道分级检查 + 一道打包验收）
 
 | 级别 | 判什么 | 入口 |
 | --- | --- | --- |
-| **A 静态 / 决定类**（秒级、不启动程序） | 接口定义与四份生成物一致；界面结构（页签 / 控件归属 / 删掉的东西不许回来 / 页面调的桥方法名壳认不认） | `node tools/gen-bindings.mjs --check` **+** `node tools/ui-static-check.mjs` |
-| **A′ 授权边界**（秒级、不启动程序） | 词典脚本伪造不出一条「翻译」动作 | `node tools/check-entry-auth.mjs` |
-| **B 纯逻辑**（不启动程序） | 内核单元测试 | `wsl.exe -- bash tools/wsl-make-test.sh`；内存检查 `make asan`（ASan + UBSan，**不许跳**） |
-| **C 对照 / 单点交互** | 与参考实现逐字节对照；渲染进程的定向观察 | `powershell -File tools\golden-gate.ps1`；`node tools/probe-page.mjs --help` |
-| **D 端到端** | 真实窗口 → 真实页面 → 通信桥 → 内核；真 DLL + 绑定 | `powershell -File tools\test-shell-app.ps1`；`powershell -File tools\test-windows-dll.ps1` |
-| **打包** | 便携包重建并验证（最后几步就是验） | `powershell -File tools\package.ps1` |
+| **A/A′** | 离线静态检查 | `node tools/gen-bindings.mjs --check` + `node tools/ui-static-check.mjs` + `node tools/check-entry-auth.mjs` |
+| **B** | 内核单测 + 内存检查| `wsl.exe -- bash tools/wsl-make-test.sh`；`make asan`（ASan + UBSan） |
+| **C** | 词典格式对照 | `powershell -File tools\golden-gate.ps1`；`node tools/probe-page.mjs --help` |
+| **D** | 真 DLL + 绑定 + 宿主适配层 | `powershell -File tools\test-shell-app.ps1`；`powershell -File tools\test-windows-dll.ps1` |
+| **打包** | 便携包重建并验证 | `powershell -File tools\package.ps1` |
 
-⚠️ **默认不是完整测试**。改文案只重打前端；纯逻辑只跑内核单测；跨模块 / 窗口几何 / 启动路径才跑 D 级。
+⚠️ **非必要不做完整测试**。改文案只重打前端；纯逻辑只跑内核单测；跨模块 / 窗口几何 / 启动路径才跑 D 级。
 每道检查的原始输出一律写进 `logs/`（已 gitignore）。
 
 ## 仓库结构
@@ -110,11 +100,11 @@ abi/lookup.abi.json   ← 唯一的接口定义（函数 / 枚举 / 常量；注
         ├─ node tools/gen-bindings.mjs ─→ native/include/dsh_lookup.h        （C 头文件）
         │                                 shell/Lookup.Interop/DshLookup.g.cs（C# 绑定）
         │                                 web/src/shared/abi.ts              （TypeScript 类型）
-        │                                 docs/api/abi.md                    （可读版）
+        │                                 docs/api/abi.md
         │
-native/src/**（C11 内核：解析 / 查词通道 / 设置 / 历史 / 发音 / 翻译 …，零第三方依赖）
+native/src/**（C11 内核：解析 / 查词通道 / 设置 / 历史 / 发音 / 翻译）
         │
-        └─ dsh_lookup.dll ─→ shell/**（操作系统相关的那一半 + 真实程序）
+        └─ dsh_lookup.dll ─→ shell/**（操作系统相关 + 真实程序）
                              web/**（界面）
 ```
 
@@ -129,39 +119,28 @@ native/src/**（C11 内核：解析 / 查词通道 / 设置 / 历史 / 发音 / 
 | `docs/` | `design/`（设计依据）、`adr/`（架构决策记录）、`api/abi.md`（自动生成）、安全审查报告 |
 | `release/screenshots/` | 上面那几张截图 |
 
-**为什么这么分**：业务逻辑只在 C 内核里，界面只是视图层，外壳只做「操作系统能力」那一半
-（探本机音色、发 HTTP、摆窗口）—— **同一件事不许有两个来源**。内核是纯 C11、不依赖系统，
-所以它能在 Linux 里编、也能交叉编译成 Windows DLL。
+**为什么这么分**：业务逻辑在 C 内核里，界面是视图层，外壳做「操作系统能力」
+（探本机音色、发 HTTP、摆窗口）。纯 C11内核不依赖系统，
+既能在 Linux 里编、也能交叉编译成 Windows DLL。
 
-**为什么对照测试不需要另一个实现**：C 级那道门比的是仓库里一份**冻结的标准答案**
-（`tools/golden/baseline/golden-baseline.json`，来源与哈希记在同目录 `provenance.md`）——
-那份答案是在把内核从上一代 C# 实现移植过来时、由那份实现产出的，**产完之后就不再需要它**。
-所以跑测试、构建、打包**都不需要**任何别的实现；只有"重新生成那几份对照产物"才要
-（那种时候脚本会告诉你缺什么、怎么补），日常开发碰不到。
 
 ## 已知限制
 
 1. **只支持 Windows**。内核（`native/`）是纯 C11、可移植；但外壳（C# / WinForms）与界面目前只有
    Windows 那一份实现。
-2. **在线发音与机器翻译需要自备凭据**（火山引擎 / 豆包的 API Key 与音色），按量计费。
-   没填就**置灰并说明原因**，绝不不报错地失败。凭据只存在用户自己的设置里，仓库里不含任何 Key。
+2. **在线发音与机器翻译需要自备凭据**（火山引擎 / 豆包语音 API Key 与音色），按量计费。凭据只存在用户自己的设置里。
 3. **不附带任何词典**。词典版权属于各自的作者。
 4. 界面用 WebView2 渲染，所以外观与行为跟着系统上装的 Edge 内核走。
-5. **格式支持范围以对照测试为准**，不以文档声称的为准：`docs/design/` 里那些设计文档写的是
-   *打算怎么做*，`tools/golden/fixtures.txt` 那 21 本合成词典才是*实际验过什么*。
+5. **格式支持范围以对照测试为准**。
 
 ## 关于本仓库
 
-- 本仓库是 **0.2.1**；`CHANGELOG.md` 记用户看得见的变化，`AGENTS.md` 记开工与验收的规矩。
-- 本仓库**含**测试、测试用词典与验收 / 打包脚本 —— 开发与验收都在这一个目录里完成。
-- 代码注释里偶尔会看到「参考实现」这个说法：指的是上一代的 C# 实现（**不随本仓库发布**）。
-  本版内核是拿它当标准答案逐字节对照移植过来的；移植完成后，那份**标准答案**冻结在
-  `tools/golden/baseline/`，日常回归就是跟它比。**读代码、跑测试、构建都不需要那份实现。**
+- 本仓库含测试、测试用词典与验收 / 打包脚本 —— 开发与验收都在这一个目录里完成。
+- 代码注释里偶尔会看到「参考实现」这个说法：指的是上一代的 C# 实现（未发布）。
 - 本仓库不含任何凭据；在线发音与机器翻译一律要你自己申请、自己填。
 
 ## 许可
 
 本项目以 **MIT 许可**发布，见 [`LICENSE`](LICENSE) —— 那个文件里**只有 MIT 全文**，
-第三方的东西一律不往里塞（它同时会被原样搬进便携包，混进去就说不清哪段管什么了）。
 第三方组件与它们的许可见 [`THIRD-PARTY.md`](THIRD-PARTY.md)：仓库里那处是 libspeex 1.2.1
 （BSD 3-Clause，只用了它的解码路径），便携包里还随包分发微软的 WebView2 组件（同样 BSD 3-Clause）。
