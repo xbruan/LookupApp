@@ -20,6 +20,10 @@
 <details>
 <summary>界面截图（点开看）</summary>
 
+| 悬浮窗 |
+| --- |
+|![悬浮窗](release/screenshots/screenshot-floating.png) |
+  
 | 词库 | 常规 |
 | --- | --- |
 | ![词库](release/screenshots/screenshot-options-dicts.png) | ![常规](release/screenshots/screenshot-options-general.png) |
